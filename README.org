@@ -1,0 +1,12 @@
+#+TITLE: Loopus - A portable loop optimization framework for Common Lisp
+#+AUTHOR: Marco Heisig
+
+#+BEGIN_QUOTE
+Sometimes, when the full moon rises and foolish programmers declare
+(optimize (safety 0)), you can hear the howl of the Loopus, and screams of
+source code that is ripped into pieces.
+#+END_QUOTE
+
+Loopus is a portable loop optimization framework for Common Lisp.  It can
+either be used as a building block for a compiler, or directly by
+application programmers.
