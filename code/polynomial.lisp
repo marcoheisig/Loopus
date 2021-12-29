@@ -18,6 +18,8 @@
 
 (defgeneric coerce-to-polynomial (x representation))
 
+;;; Classes
+
 (defclass polynomial ()
   ())
 

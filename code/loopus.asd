@@ -18,4 +18,5 @@
    (:file "ir")
    (:file "ir-convert")
    (:file "ir-optimize")
-   (:file "ir-expand")))
+   (:file "ir-expand")
+   (:file "macros")))

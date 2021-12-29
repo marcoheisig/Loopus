@@ -15,6 +15,6 @@
    #:polynomial+
    #:polynomial-
    #:polynomial*
-   ;; other
+   ;; macros.lisp
    #:for
-   ))
+   #:begin))
