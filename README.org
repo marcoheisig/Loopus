@@ -4,9 +4,14 @@
 #+BEGIN_QUOTE
 Sometimes, when the full moon rises and foolish programmers declare
 (optimize (safety 0)), you can hear the howl of the Loopus, and screams of
-source code that is ripped into pieces.
+source code that is ripped to shreds.
 #+END_QUOTE
 
 Loopus is a portable loop optimization framework for Common Lisp.  It can
 either be used as a building block for a compiler, or directly by
-application programmers.
+application programmers, via macros.
+
+Right now, Loopus is not as sophisticated as I'd like it to be.  My hope is
+that this initial version will motivate others to contribute.  So if you
+are in the mood for writing a polyhedral optimization framework, don't
+hesitate to contact me :)
