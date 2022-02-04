@@ -1,31 +1,54 @@
 (in-package #:loopus)
 
-;;; This is a very simple IR, consisting only of nodes and blocks.  Each
-;;; node corresponds to a function call that produces zero or more values.
-;;; We distinguish effect nodes, such as reductions or stores, and pure
-;;; nodes.  Each block contains a sequence of effect nodes.  The arguments
-;;; of an effect node can be pure nodes or effect nodes.
+;;; This is a very simple IR, consisting only of blocks, calls, and values.
+;;; We distinguish impure calls, i.e. calls to functions with side-effects
+;;; such as reductions or stores, and pure calls.  Each block contains a
+;;; sequence of impure calls that may or may not reference values from
+;;; other pure or impure calls.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Blocks
 
+(defgeneric ir-block-immediate-dominator (ir-block))
+
+(defgeneric ir-block-depth (ir-block))
+
+(defgeneric ir-block-effects (ir-block))
+
 (defclass ir-block ()
   (;; The IR block dominating this one, or NIL if this block is the
    ;; outermost IR block.
-   (%dominator
+   (%immediate-dominator
     :initarg :immediate-dominator
     :initform (alexandria:required-argument :immediate-dominator)
     :type (or ir-block null)
     :reader ir-block-immediate-dominator)
-   ;; A list of IR nodes carried by this block that have an effect.
+   ;; A list of impure calls carried by this block.
    (%effects
     :initarg :effects
     :initform (alexandria:required-argument :effects)
     :type list
     :reader ir-block-effects)))
 
-(defclass loop-block (ir-block)
+(defmethod ir-block-depth (ir-block)
+  (trivia:match (ir-block-immediate-dominator ir-block)
+    ((eql nil) 0)
+    ((ir-block :immediate-dominator d) (1+ (ir-block-depth d)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Loops
+
+(defgeneric ir-loop-variable (ir-loop))
+
+(defgeneric ir-loop-start (ir-loop))
+
+(defgeneric ir-loop-step (ir-loop))
+
+(defgeneric ir-loop-end (ir-loop))
+
+(defclass ir-loop (ir-block)
   ((%variable
     :initarg :variable
     :initform (alexandria:required-argument :variable)
@@ -45,39 +68,91 @@
     :initarg :end
     :initform (alexandria:required-argument :end)
     :type polynomial
-    :reader ir-loop-end)
-   (%unroll
-    :initarg :unroll
-    :initform 1
-    :type unsigned-byte
-    :reader ir-loop-unroll)))
+    :reader ir-loop-end)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; Nodes
+;;; Calls
 
-(defclass ir-node ()
-  ((%arguments
-    )
+(defgeneric ir-call-function-name (ir-call))
+
+(defgeneric ir-call-arguments (ir-call))
+
+(defgeneric ir-call-results (ir-call))
+
+(defgeneric ir-call-block (ir-call))
+
+(defgeneric ir-call-depth (ir-call))
+
+(defclass ir-call ()
+  ((%function-name
+    :initarg :function-name
+    :initform (alexandria:required-argument :function-name)
+    :type function-name
+    :reader ir-call-function)
+   (%arguments
+    :initarg :arguments
+    :initform (alexandria:required-argument :arguments)
+    :type list
+    :reader ir-call-arguments)
+   (%results
+    :initarg :results
+    :initform (alexandria:required-argument :results)
+    :type list
+    :reader ir-call-results)
    (%block
-    )
-   (%result-variables
-    )))
+    :initarg :block
+    :initform (alexandria:required-argument :block)
+    :type ir-block
+    :reader ir-call-block)))
 
-(defclass effect-node (ir-node)
+(defmethod ir-call-depth ((ir-call ir-call))
+  (ir-block-depth (ir-call-block ir-call)))
+
+(defclass ir-impure-call (ir-call)
   ())
 
-(defclass pure-node (ir-node)
+(defclass ir-pure-call (ir-call)
   ())
 
-(defclass store-node (effect-node)
+(defclass ir-load (ir-pure-call)
   ())
 
-(defclass reduction-node (effect-node)
+(defclass ir-store (impure-call)
   ())
 
-(defclass invoke-block-node (effect-node)
+(defclass ir-reduction (impure-call)
   ())
 
-(defclass call-node (pure-node)
-  ())
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Values
+
+(defgeneric ir-value-name (ir-value))
+
+(defgeneric ir-value-type (ir-value))
+
+(defgeneric ir-value-definition (ir-value))
+
+(defgeneric ir-value-users (ir-value))
+
+(defclass ir-value ()
+  ((%name
+    :initarg :name
+    :initform (gensym "V")
+    :type symbol
+    :reader ir-value-name)
+   (%type
+    :initarg :type
+    :initform 't
+    :accessor ir-value-type)
+   (%definition
+    :initarg :definition
+    :initform (alexandria:required-argument :definition)
+    :type ir-call
+    :reader ir-value-definition)
+   (%users
+    :initarg :users
+    :initform '()
+    :type list
+    :reader ir-value-users)))

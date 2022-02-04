@@ -7,6 +7,7 @@
   ("alexandria"
    "closer-mop"
    "bordeaux-threads"
+   "trivia"
    "trivial-macroexpand-all")
 
   :serial t
