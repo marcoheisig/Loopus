@@ -31,9 +31,3 @@
             (return-from parse-body
               (values rest (reverse declaration-specifiers))))))
     (values '() (reverse declaration-specifiers))))
-
-(defun lambda-expression-p (x)
-  (and (listp x)
-       (> (list-length x) 1)
-       (eq (first x) 'lambda)
-       (listp (second x))))

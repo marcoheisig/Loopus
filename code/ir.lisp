@@ -16,25 +16,36 @@
 
 (defgeneric ir-block-effects (ir-block))
 
-(defclass ir-block ()
-  (;; The IR block dominating this one, or NIL if this block is the
-   ;; outermost IR block.
-   (%immediate-dominator
-    :initarg :immediate-dominator
-    :initform (alexandria:required-argument :immediate-dominator)
-    :type (or ir-block null)
-    :reader ir-block-immediate-dominator)
-   ;; A list of impure calls carried by this block.
-   (%effects
-    :initarg :effects
-    :initform (alexandria:required-argument :effects)
-    :type list
-    :reader ir-block-effects)))
+(defgeneric ir-block-add-effect (ir-block effect))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defclass ir-block ()
+    (;; The IR block dominating this one, or NIL if this block is the
+     ;; outermost IR block.
+     (%immediate-dominator
+      :initarg :immediate-dominator
+      :initform nil
+      :type (or ir-block null)
+      :reader ir-block-immediate-dominator)
+     ;; A doubly-linked list of impure calls carried by this block.
+     (%effect-dlist
+      :initarg :effect-dlist
+      :initform (dlist:dlist)
+      :type dlist:dlist
+      :reader ir-block-effect-dlist))))
 
 (defmethod ir-block-depth (ir-block)
   (trivia:match (ir-block-immediate-dominator ir-block)
     ((eql nil) 0)
     ((ir-block :immediate-dominator d) (1+ (ir-block-depth d)))))
+
+(defmethod ir-block-effects (ir-block)
+  (dlist:list-from-dlist
+   (ir-block-effect-dlist ir-block)))
+
+(defmethod ir-block-add-effect (ir-block effect)
+  (check-type effect ir-impure-call)
+  (dlist:dlist-push-back effect (ir-block-effect-dlist ir-block)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -52,7 +63,7 @@
   ((%variable
     :initarg :variable
     :initform (alexandria:required-argument :variable)
-    :type variable
+    :type ir-loop-variable
     :reader ir-loop-variable)
    (%start
     :initarg :start
@@ -80,10 +91,6 @@
 
 (defgeneric ir-call-results (ir-call))
 
-(defgeneric ir-call-block (ir-call))
-
-(defgeneric ir-call-depth (ir-call))
-
 (defclass ir-call ()
   ((%function-name
     :initarg :function-name
@@ -99,15 +106,7 @@
     :initarg :results
     :initform (alexandria:required-argument :results)
     :type list
-    :reader ir-call-results)
-   (%block
-    :initarg :block
-    :initform (alexandria:required-argument :block)
-    :type ir-block
-    :reader ir-call-block)))
-
-(defmethod ir-call-depth ((ir-call ir-call))
-  (ir-block-depth (ir-call-block ir-call)))
+    :reader ir-call-results)))
 
 (defclass ir-impure-call (ir-call)
   ())
@@ -130,29 +129,79 @@
 
 (defgeneric ir-value-name (ir-value))
 
-(defgeneric ir-value-type (ir-value))
+(defgeneric ir-value-declared-type (ir-value))
 
-(defgeneric ir-value-definition (ir-value))
+(defgeneric ir-value-derived-type (ir-value))
+
+(defgeneric (setf ir-value-derived-type) (type ir-value))
 
 (defgeneric ir-value-users (ir-value))
 
+(defgeneric ir-unknown-form (ir-unknown))
+
+(defgeneric ir-result-definition (ir-result))
+
+(defgeneric ir-constant-value (ir-constant))
+
+(defgeneric ir-function-lambda-list (ir-function))
+
+(defgeneric ir-function-body (ir-function))
+
+(defgeneric ir-function-lexenv (ir-function))
+
 (defclass ir-value ()
-  ((%name
-    :initarg :name
-    :initform (gensym "V")
-    :type symbol
-    :reader ir-value-name)
-   (%type
+  ((%declared-type
+    :initarg :type
+    :initform (alexandria:required-argument :declared-type)
+    :reader ir-value-declared-type)
+   (%derived-type
     :initarg :type
     :initform 't
-    :accessor ir-value-type)
-   (%definition
+    :accessor ir-value-derived-type)))
+
+(defclass ir-loop-variable (ir-value)
+  ((%name
+    :initarg :name
+    :initform (alexandria:required-argument :name)
+    :type variable-name
+    :reader ir-loop-variable-name)
+   (%loop
+    :initarg :loop
+    :initform nil
+    :type (or ir-loop null)
+    :reader ir-loop-variable-loop)))
+
+(defclass ir-unknown (ir-value)
+  ((%form
+    :initarg :form
+    :initform (alexandria:required-argument :form)
+    :reader ir-unknown-form)))
+
+(defclass ir-result (ir-value)
+  ((%definition
     :initarg :definition
     :initform (alexandria:required-argument :definition)
     :type ir-call
-    :reader ir-value-definition)
-   (%users
-    :initarg :users
-    :initform '()
-    :type list
-    :reader ir-value-users)))
+    :reader ir-result-definition)))
+
+(defclass ir-constant (ir-value)
+  ((%value
+    :initarg :value
+    :initform (alexandria:required-argument :value)
+    :type t
+    :reader ir-constant-value)))
+
+(defclass ir-function (ir-value)
+  ((%lambda-list
+    :initarg :lambda-list
+    :initform (alexandria:required-argument :lambda-list)
+    :reader ir-function-lambda-list)
+   (%body
+    :initarg :body
+    :initform (alexandria:required-argument :body)
+    :reader ir-function-body)
+   (%lexenv
+    :initarg :lexenv
+    :initform (alexandria:required-argument :lexenv)
+    :type lexenv
+    :reader ir-function-lexenv)))

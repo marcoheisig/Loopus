@@ -7,7 +7,9 @@
   ("alexandria"
    "closer-mop"
    "bordeaux-threads"
+   "loopus.dlist"
    "trivia"
+   "trivial-cltl2"
    "trivial-macroexpand-all")
 
   :serial t

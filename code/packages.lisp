@@ -3,6 +3,7 @@
 (defpackage #:loopus
   (:use #:closer-common-lisp)
   (:shadow #:variable)
+  (:local-nicknames (#:dlist #:loopus.dlist))
   (:export
    ;; polynomial.lisp
    #:*default-polynomial-representation*
