@@ -17,17 +17,3 @@
      binding)
     (otherwise
      (error "Malformed binding: ~S" binding))))
-
-;;; Returns two values - the body forms and a list containing all
-;;; declaration specifiers.
-(defun parse-body (body &key (allow-documentation nil))
-  (let ((declaration-specifiers '()))
-    (loop for (item . rest) on body do
-      ;; If documentation is allowed, skip it.
-      (unless (and allow-documentation (stringp item))
-        (if (and (consp item) (eq (first item) 'declare))
-            (loop for declaration-specifier in (rest item) do
-              (push declaration-specifier declaration-specifiers))
-            (return-from parse-body
-              (values rest (reverse declaration-specifiers))))))
-    (values '() (reverse declaration-specifiers))))

@@ -19,6 +19,7 @@
    (:file "variable")
    (:file "polynomial")
    (:file "ir")
+   (:file "lexenv")
    (:file "ir-convert")
    (:file "ir-optimize")
    (:file "ir-expand")

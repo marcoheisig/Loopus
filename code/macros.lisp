@@ -8,4 +8,4 @@
   (declare (ignorable variable start end step body))
   (ir-expand
    (ir-optimize
-    (ir-convert-in-environment form env))))
+    (ir-convert-in-environment form env 0))))
