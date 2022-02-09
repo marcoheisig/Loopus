@@ -20,7 +20,7 @@
 ;;; resulting from a reference to that function.
 (defvar *function-references*)
 
-(defun ir-convert-in-environment (form env &optional (number-of-values 1))
+(defun ir-convert-in-environment (form env &optional (expected-values '*))
   (let* ((initial-node (make-instance 'ir-initial-node))
          (*predecessor* initial-node)
          (*constants* (make-hash-table))
@@ -39,38 +39,49 @@
          ,form)
       env)
      (make-lexenv env)
-     number-of-values)
+     expected-values)
     initial-node))
 
 (defgeneric ir-convert-constant (constant))
 
-(defgeneric ir-convert-symbol (symbol lexenv number-of-values))
+(defgeneric ir-convert-symbol (symbol lexenv expected-values))
 
-(defgeneric ir-convert-compound-form (operator rest lexenv number-of-values))
+(defgeneric ir-convert-compound-form (operator rest lexenv expected-values))
 
-(defmacro with-fixed-number-of-values
-    ((number-of-values &optional (default-form nil)) &body body)
-  (alexandria:with-gensyms (n values default none)
-    `(let ((,default ',none)
-           (,n ,number-of-values)
-           (,values (multiple-value-list (progn ,@body))))
-       (values-list
-        (loop repeat ,n
-              collect
-              (cond ((null ,values)
-                     (when (eq ,default ',none)
-                       (setf ,default ,default-form))
-                     ,default)
-                    ((consp ,values)
-                     (pop ,values))))))))
+(defmacro ensure-expected-values
+    (expected-values &body body)
+  (alexandria:once-only (expected-values)
+    (alexandria:with-gensyms (thunk values)
+      `(let ((,thunk (lambda () ,@body)))
+         (case expected-values
+           ((*) (funcall ,thunk))
+           ((1) (let ((value (funcall ,thunk)))
+                  (assert (ir-value-p value))
+                  (values value)))
+           (otherwise
+            (let ((,values (multiple-value-list (funcall ,thunk))))
+              (assert (every #'ir-value-p ,values))
+              (values-list
+               (loop repeat ,expected-values
+                     collect
+                     (cond ((null ,values)
+                            (ir-convert-constant nil))
+                           ((consp ,values)
+                            (pop ,values))))))))))))
 
-(defun ir-convert (form lexenv &optional (number-of-values 1))
-  (with-fixed-number-of-values (number-of-values (ir-convert-constant nil))
+(defun make-outputs (expected-values)
+  (if (eq expected-values '*)
+      '()
+       (loop repeat expected-values
+             collect (make-instance 'ir-value))))
+
+(defun ir-convert (form lexenv &optional (expected-values 1))
+  (ensure-expected-values expected-values
     (if (atom form)
         (if (symbolp form)
-            (ir-convert-symbol form lexenv number-of-values)
+            (ir-convert-symbol form lexenv expected-values)
             (ir-convert-constant form))
-        (ir-convert-compound-form (first form) (rest form) lexenv number-of-values))))
+        (ir-convert-compound-form (first form) (rest form) lexenv expected-values))))
 
 (defun push-node (node)
   (add-control-flow-edge *predecessor* node)
@@ -92,7 +103,10 @@
 
 ;;; Conversion of Symbols
 
-(defmethod ir-convert-symbol ((variable-name symbol) lexenv number-of-values)
+(defmethod ir-convert-symbol ((variable-name symbol) lexenv expected-values)
+  ;; We might want to need this once we can handle macroexpansion (and, in
+  ;; particular, symbol macroexpansion) ourselves.
+  (declare (ignore expected-values))
   (let* ((env (lexenv-parent lexenv))
          (vrecords (lexenv-vrecords lexenv))
          (vrecord (find variable-name vrecords :key #'vrecord-name)))
@@ -124,12 +138,12 @@
 ;;; Conversion of Compound Forms
 
 (defmethod ir-convert-compound-form
-    ((operator symbol) rest lexenv number-of-values)
-  (ir-convert `(funcall (function ,operator) ,@rest) lexenv number-of-values))
+    ((operator symbol) rest lexenv expected-values)
+  (ir-convert `(funcall (function ,operator) ,@rest) lexenv expected-values))
 
 (defmethod ir-convert-compound-form
-    ((_ (eql 'funcall)) rest lexenv number-of-values)
-  (let ((outputs (loop repeat number-of-values collect (make-instance 'ir-value))))
+    ((_ (eql 'funcall)) rest lexenv expected-values)
+  (let ((outputs (make-outputs expected-values)))
     (push-node
      (make-instance 'ir-call
        :inputs (mapcar (lambda (form) (ir-convert form lexenv)) rest)
@@ -137,13 +151,13 @@
     (values-list outputs)))
 
 (defmethod ir-convert-compound-form
-    ((_ (eql 'macrolet)) rest lexenv number-of-values)
+    ((_ (eql 'macrolet)) rest lexenv expected-values)
   ;; We have already processed everything with MACROEXPAND-ALL, so we can
   ;; just convert the macrolet's body.
-  (ir-convert `(locally ,@(rest rest)) lexenv number-of-values))
+  (ir-convert `(locally ,@(rest rest)) lexenv expected-values))
 
 (defmethod ir-convert-compound-form
-    ((_ (eql 'function)) rest lexenv number-of-values)
+    ((_ (eql 'function)) rest lexenv expected-values)
   (trivia:match rest
     ((list (and function-name (type function-name)))
      (let* ((env (lexenv-parent lexenv))
@@ -175,24 +189,6 @@
     ((list (list* 'lambda (list* lambda-list) body))
      (when (intersection lambda-list lambda-list-keywords)
        (error "Lambda list keywords aren't supported, yet."))
-     ;; TODO The Loopus IR is designed such that each statement returns a
-     ;; fixed, constant number of values.  The problematic part is figuring
-     ;; out what that number is for converting the body of an enclose node.
-     ;;
-     ;; Luckily, we are not writing a general purpose Lisp compiler, so we
-     ;; can just enforce a behavior.  The question is which behavior
-     ;; strikes the right balance.  The possible solutions are:
-     ;;
-     ;; 1. The number of values returned by a local function is always 1.
-     ;;
-     ;; 2. The number of values returned by a local function is the maximum
-     ;;    of the number of expected values of all the local call sites.
-     ;;
-     ;; 3. The number of values returned by a local function must be
-     ;;    supplied with a suitable ftype declaration.
-     ;;
-     ;; 4. The number of values returned by a local function is derived by
-     ;;    static analysis.
      (multiple-value-bind (forms declarations) (alexandria:parse-body body)
        (declare (ignore declarations))
        (let* ((value (make-instance 'ir-value))
@@ -209,7 +205,7 @@
               (body-node
                 (let* ((initial-node (make-instance 'ir-initial-node))
                        (*predecessor* initial-node))
-                  (ir-convert `(locally ,@forms) lexenv 1)
+                  (ir-convert `(locally ,@forms) lexenv '*)
                   initial-node)))
          (push-node (make-instance 'ir-enclose
                       :outputs (list value)
@@ -220,23 +216,23 @@
               `(function ,@rest)))))
 
 (defmethod ir-convert-compound-form
-    ((_ (eql 'progn)) rest lexenv number-of-values)
-  (ir-convert-progn rest lexenv number-of-values))
+    ((_ (eql 'progn)) rest lexenv expected-values)
+  (ir-convert-progn rest lexenv expected-values))
 
-(defun ir-convert-progn (forms lexenv number-of-values)
+(defun ir-convert-progn (forms lexenv expected-values)
   (dolist (form (butlast forms))
     (ir-convert form lexenv 0))
-  (ir-convert (first (last forms)) lexenv number-of-values))
+  (ir-convert (first (last forms)) lexenv expected-values))
 
 (defmethod ir-convert-compound-form
-    ((_ (eql 'locally)) rest lexenv number-of-values)
+    ((_ (eql 'locally)) rest lexenv expected-values)
   (multiple-value-bind (body-forms declarations)
       (alexandria:parse-body rest)
     (declare (ignore declarations))
-    (ir-convert-progn body-forms lexenv number-of-values)))
+    (ir-convert-progn body-forms lexenv expected-values)))
 
 (defmethod ir-convert-compound-form
-    ((_ (eql 'let)) rest lexenv number-of-values)
+    ((_ (eql 'let)) rest lexenv expected-values)
   (unless (and (consp rest) (listp (first rest)))
     (error "Malformed let form: ~S" `(let ,@rest)))
   (multiple-value-bind (forms declarations) (alexandria:parse-body (rest rest))
@@ -249,10 +245,10 @@
             collect
             (make-vrecord name (ir-convert form lexenv)))
       '())
-     number-of-values)))
+     expected-values)))
 
 (defmethod ir-convert-compound-form
-    ((_ (eql 'let*)) rest lexenv number-of-values)
+    ((_ (eql 'let*)) rest lexenv expected-values)
   (unless (and (consp rest) (listp (first rest)))
     (error "Malformed let* form: ~S" `(let* ,@rest)))
   (loop for (name form) in (mapcar #'canonicalize-binding (first rest)) do
@@ -263,7 +259,7 @@
            '())))
   (multiple-value-bind (forms declarations) (alexandria:parse-body (rest rest))
     (declare (ignore declarations))
-    (ir-convert-progn forms lexenv number-of-values)))
+    (ir-convert-progn forms lexenv expected-values)))
 
 (defun canonicalize-binding (binding)
   (trivia:match binding
@@ -274,7 +270,7 @@
     (_ (error "Malformed binding: ~S" binding))))
 
 (defmethod ir-convert-compound-form
-    ((_ (eql 'flet)) rest lexenv number-of-values)
+    ((_ (eql 'flet)) rest lexenv expected-values)
   (unless (and (consp rest)
                (listp (first rest)))
     (error "Malformed flet form: ~S" `(flet ,@rest)))
@@ -294,17 +290,17 @@
                 (ir-convert `(function (lambda ,lambda-list ,@body)) lexenv)))
               (_ (error "Malformed flet definition: ~S"
                         definition)))))
-     number-of-values)))
+     expected-values)))
 
 (defmethod ir-convert-compound-form
-    ((_ (eql 'the)) rest lexenv number-of-values)
+    ((_ (eql 'the)) rest lexenv expected-values)
   (unless (= 2 (length rest))
     (error "Malformed the form: ~S" `(the ,@rest)))
   ;; TODO
-  (ir-convert (second rest) lexenv number-of-values))
+  (ir-convert (second rest) lexenv expected-values))
 
 (defmethod ir-convert-compound-form
-    ((_ (eql 'if)) rest lexenv number-of-values)
+    ((_ (eql 'if)) rest lexenv expected-values)
   (unless (<= 2 (length rest) 3)
     (error "Malformed IF form: ~S" `(if ,@rest)))
   (destructuring-bind (test then &optional else) rest
@@ -318,7 +314,7 @@
                  (*dominator* node))
             (values
              (multiple-value-list
-              (ir-convert then lexenv number-of-values))
+              (ir-convert then lexenv expected-values))
              initial-node))
         (multiple-value-bind (else-outputs else-node)
             (let* ((initial-node (make-instance 'initial-node))
@@ -326,9 +322,10 @@
                    (*dominator* node))
               (values
                (multiple-value-list
-                (ir-convert else lexenv number-of-values))
+                (ir-convert else lexenv expected-values))
                initial-node))
           (let ((outputs
+                  ;; TODO
                   (loop for then-output in then-outputs
                         for else-output in else-outputs
                         collect
@@ -344,7 +341,8 @@
             (values-list outputs)))))))
 
 (defmethod ir-convert-compound-form
-    ((_ (eql '%for)) rest lexenv number-of-values)
+    ((_ (eql '%for)) rest lexenv expected-values)
+  (declare (ignore expected-values)) ; Loops return nothing.
   (destructuring-bind (quoted-variable-name start end step body-form) rest
     (let* ((variable-name (second quoted-variable-name))
            (variable (make-instance 'ir-value))

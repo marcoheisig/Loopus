@@ -36,7 +36,10 @@
     :initform (alexandria:required-argument :inputs)
     :type list
     :reader ir-node-inputs)
-   ;; The list of values that are produced by this node.
+   ;; The list of values that are produced by this node.  One peculiarity
+   ;; should be mentioned here: If the node is the final node of a
+   ;; sequence, i.e., if its successor is NIL, its outputs are meaningless.
+   ;; It may return any number of values in an unspecified way.
    (%outputs
     :initarg :outputs
     :initform (alexandria:required-argument :outputs)

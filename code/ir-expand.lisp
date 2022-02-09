@@ -12,7 +12,7 @@
 (defun ir-expand (ir)
   (let ((*ir-expand-value-names* (make-hash-table :test #'eq))
         (*gensym-counter* 0))
-    (ir-expand-initial-node ir)))
+    (ir-expand-node ir)))
 
 (defmethod ir-expand-node ((ir-initial-node ir-initial-node))
   `(basic-block
@@ -54,40 +54,42 @@
 ;;; The Basic Block Macro
 
 (defmacro basic-block (&rest body)
-  (expand-basic-block body '()))
+  (if (null body)
+      `(values)
+      (expand-basic-block body)))
 
-(defun expand-basic-block (body values)
+(defun expand-basic-block (body)
   (trivia:ematch body
-    ((list)
-     `(values ,@values))
+    ((list (list (list* _) form))
+     form)
     ((list* (list (list) form)
             rest)
-     `(progn ,form ,(expand-basic-block rest '())))
+     `(progn ,form ,(expand-basic-block rest)))
     ((list* (list (list variable) form)
             rest)
      (expand-basic-block/let* (list (list variable form)) rest))
     ((list* (list (list* variables) form)
             rest)
      `(multiple-value-bind ,variables ,form
-        ,(expand-basic-block rest variables)))
+        ,(expand-basic-block rest)))
     ((list* malformed _)
      (error "Malformed block component: ~S" malformed))))
 
 (defun expand-basic-block/let* (reversed-bindings body)
   (trivia:ematch body
-    ((list)
+    ((list (list (list* _) form))
      `(let* ,(reverse reversed-bindings)
-        (values ,(first (first reversed-bindings)))))
+        ,form))
     ((list* (list (list) form)
             rest)
      `(let* ,(reverse reversed-bindings)
         ,form
-        ,(expand-basic-block rest '())))
+        ,(expand-basic-block rest)))
     ((list* (list (list variable) form) rest)
      (expand-basic-block/let* (list* (list variable form) reversed-bindings) rest))
     ((list* (list (list* variables) form) rest)
      `(let* ,(reverse reversed-bindings)
         (multiple-value-bind ,variables ,form
-          ,(expand-basic-block rest variables))))
+          ,(expand-basic-block rest))))
     ((list* malformed _)
      (error "Malformed block component: ~S" malformed))))
