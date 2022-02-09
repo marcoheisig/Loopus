@@ -6,7 +6,7 @@
 ;;; assemble IR nodes.
 
 ;;; The most recent IR node that has been created.
-(defvar *successor*)
+(defvar *predecessor*)
 
 ;;; An EQL hash table, mapping from each constant to the IR value resulting
 ;;; from constructing that constant.
@@ -176,6 +176,7 @@
      (multiple-value-bind (forms declarations) (alexandria:parse-body body)
        (declare (ignore declarations))
        (let ((value (make-instance 'ir-value)))
+         ;; TODO
          (push-node (make-instance 'ir-enclose :outputs (list value)))
          value)))
     (_ (error "Malformed function special form :~S."
@@ -271,26 +272,39 @@
     (error "Malformed IF form: ~S" `(if ,@rest)))
   (destructuring-bind (test then &optional else) rest
     (let* ((test-value (ir-convert test lexenv))
-           (node (make-instance 'ir-node))
-           (then-outputs
-             (let ((*predecessor* node))
+           (node (make-instance 'ir-node
+                   :inputs (list test-value)
+                   :outputs '())))
+      (multiple-value-bind (then-outputs then-node)
+          (let* ((initial-node (make-instance 'initial-node))
+                 (*predecessor* initial-node)
+                 (*dominator* node))
+            (values
+             (multiple-value-list
+              (ir-convert then lexenv number-of-values))
+             initial-node))
+        (multiple-value-bind (else-outputs else-node)
+            (let* ((initial-node (make-instance 'initial-node))
+                   (*predecessor* initial-node)
+                   (*dominator* node))
+              (values
                (multiple-value-list
-                (ir-convert then lexenv number-of-values))))
-           (else-outputs
-             (let ((*predecessor* node))
-               (multiple-value-list
-                (ir-convert else lexenv number-of-values))))
-           (outputs
-             (loop for then-output in then-outputs
-                   for else-output in else-outputs
-                   collect
-                   (make-instance 'ir-value))))
-      (change-class node 'ir-if
-        :inputs (list test-value)
-        :outputs outputs
-        :then-outputs then-outputs)
-      (push-node node)
-      (values-list outputs))))
+                (ir-convert else lexenv number-of-values))
+               initial-node))
+          (let ((outputs
+                  (loop for then-output in then-outputs
+                        for else-output in else-outputs
+                        collect
+                        (make-instance 'ir-value
+                          :derived-type
+                          `(or ,(ir-value-derived-type then-output)
+                               ,(ir-value-derived-type else-output))))))
+            (change-class node 'ir-if
+              :then-node then-node
+              :else-node else-node
+              :outputs outputs)
+            (push-node node)
+            (values-list outputs)))))))
 
 (defmethod ir-convert-compound-form
     ((_ (eql '%for)) rest lexenv number-of-values)
@@ -305,7 +319,7 @@
                    :outputs '()
                    :variable variable
                    :body body)))
-      (let ((*dominating-loop* loop)
+      (let ((*dominator* loop)
             (*predecessor* body)
             (lexenv (augment-lexenv lexenv (list (make-vrecord variable-name variable)) '())))
         (ir-convert body-form lexenv 0))

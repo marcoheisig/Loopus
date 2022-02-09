@@ -1,48 +1,67 @@
 (in-package #:loopus)
 
-(defvar *dominating-loop* nil)
+(defvar *dominator* nil)
 
-;;; This is a very simple IR, consisting of a directed graph of nodes that
-;;; are connected via their lists of successors and predecessors.  When
-;;; control is transferred to a node, it reads its (possibly empty) list of
-;;; input values, computes its output values and determines which successor
-;;; it transfers control to.
+;;; This is a very simple IR, consisting of a sequence of nodes that are
+;;; connected via their successor and predecessor slot.  The node whose
+;;; predecessor is NIL is called the initial node.  The node whose
+;;; successor is NIL is called the final node.  When control is transferred
+;;; to a node, it reads its (possibly empty) list of input values, computes
+;;; its output values and transfers control to its successor.  The final
+;;; node returns its outputs.  Some nodes, such as the IR-IF and IR-LOOP,
+;;; have a reference to one or more other initial IR nodes that are
+;;; processed specially.
 
 (defclass ir-node ()
-  ((%dominating-loop
-    :initarg :dominating-loop
-    :initform *dominating-loop*
+  (;; The IR node that this node transfers control to.
+   (%successor
+    :initform nil
+    :type (or null ir-node)
+    :reader ir-node-successor)
+   ;; The IR node that this node receives control from.
+   (%predecessor
+    :initform nil
+    :type (or null ir-node)
+    :reader ir-node-predecessor)
+   ;; The IR node 'above' this one, i.e., the unique loop or if node that
+   ;; has a reference to this node or some predecessor of this node.
+   (%dominator
+    :initarg :dominator
+    :initform *dominator*
     :type (or null ir-loop)
-    :reader ir-node-dominating-loop)
+    :reader ir-node-dominator)
+   ;; The list of values that are used by this node.
    (%inputs
     :initarg :inputs
     :initform (alexandria:required-argument :inputs)
     :type list
     :reader ir-node-inputs)
+   ;; The list of values that are produced by this node.
    (%outputs
     :initarg :outputs
     :initform (alexandria:required-argument :outputs)
     :type list
-    :reader ir-node-outputs)
-   (%successors
-    :initform '()
-    :type list
-    :reader ir-node-successors)
-   (%predecessors
-    :initform '()
-    :type list
-    :reader ir-node-predecessors)))
+    :reader ir-node-outputs)))
 
 (defgeneric ir-node-p (x)
   (:method ((x t)) nil)
   (:method ((x ir-node)) t))
 
-(define-modify-macro appendf (&rest args) append)
-
 (defgeneric add-control-flow-edge (from to)
   (:method ((from ir-node) (to ir-node))
-    (appendf (slot-value to '%predecessors) (list from))
-    (appendf (slot-value from '%successors) (list to))))
+    (let ((predecessor (ir-node-predecessor to)))
+      (if (null predecessor)
+          (setf (slot-value to '%predecessor) from)
+          (unless (eq predecessor from)
+            (error "Attempt to redefine the predecessor of ~S from ~S to ~S."
+                   to predecessor from))))
+    (let ((successor (ir-node-successor from)))
+      (if (null successor)
+          (setf (slot-value from '%successor) to)
+          (unless (eq successor to)
+            (error "Attempt to redefine the successor of ~S from ~S to ~S."
+                   from successor to))))
+    (values)))
 
 (defclass ir-value ()
   ((%declared-type
@@ -81,22 +100,18 @@
   (dolist (input (ir-node-inputs ir-node))
     (ensure-ir-value-user input ir-node)))
 
-(defgeneric add-declaration (ir-value declared-type)
-  (:method ((ir-value ir-value) declared-type)
-    (break "TODO")))
-
-;;; The initial node of an IR graph.  It has no inputs, no outputs, and
-;;; simply transfers control to its sole successor.
+;;; An initial node has no inputs, no outputs, and no predecessor and does
+;;; nothing but transfer its control to its successor.
 (defclass ir-initial-node (ir-node)
-  ((%inputs :type null :initform '())
-   (%outputs :type null :initform '())))
+  ((%inputs :initform '() :type null)
+   (%outputs :initform '() :type null)
+   (%predecessor :type null)))
 
 ;;; A loop node has three inputs (start, step, and end), zero outputs, one
 ;;; successor, and a control flow node that marks the beginning of its
 ;;; body.  When control is transferred to the loop node, it repeatedly
 ;;; evaluates its body in an environment where the loop variable is bound
-;;; to successive elements of the iteration space, and finally transfers
-;;; control to its sole successor.
+;;; to successive elements of the iteration space.
 (defclass ir-loop (ir-node)
   ((%variable
     :initarg :variable
@@ -113,38 +128,36 @@
   (ensure-ir-value-producer (ir-loop-variable ir-loop) ir-loop))
 
 ;;; A call has first input that is a function, and further inputs that
-;;; serve as the arguments of that function, some number of outputs (whose
-;;; number need not fit to the number of arguments of the function), and a
-;;; single successor.  When control is transferred to it, it binds each
-;;; output to the corresponding value obtained by invoking the function on
-;;; the arguments and transfers control to its successor.
+;;; serve as the arguments of that function, and some number of outputs
+;;; (whose number need not fit to the number of arguments of the function).
+;;; When control is transferred to it, it binds each output to the
+;;; corresponding value obtained by invoking the function on the arguments.
 (defclass ir-call (ir-node)
   ())
 
-;;; An if node has one input (the value to test), some number of outputs,
-;;; and two successors (then and else).  When control is transferred to it,
-;;; it transfers control to its first successor if the input is true, and
-;;; to its second successor if the input is false.  Then it binds its
-;;; outputs to the values produced by whatever successor was chosen.
+;;; An if node has one input that is the generalized boolean to test, some
+;;; number of outputs, a then node, and an else node.  When control is
+;;; transferred to it, it transfers control to its then node if the input
+;;; is true, and to its then node if the input is false.  Then it binds its
+;;; outputs to the values produced by whatever chain of nodes was chosen.
 (defclass ir-if (ir-node)
-  ((%then-outputs
-    :initarg :then-outputs
-    :initform (alexandria:required-argument :then-outputs)
+  ((%then-node
+    :initarg :then-node
+    :initform (alexandria:required-argument :then-node)
     :type list
-    :reader ir-if-then-outputs)
-   (%else-outputs
-    :initarg :else-outputs
-    :initform (alexandria:required-argument :else-outputs)
+    :reader ir-if-then-node)
+   (%else-node
+    :initarg :else-node
+    :initform (alexandria:required-argument :else-node)
     :type list
-    :reader ir-if-else-outputs)))
+    :reader ir-if-else-node)))
 
-;;; A construct node has zero inputs, some number of outputs, and a single
-;;; successor.  When control is transferred to it, it binds each output to
-;;; the corresponding value obtained by evaluating its form and transfers
-;;; control to its successor.
+;;; A construct node has zero inputs and some number of outputs.  When
+;;; control is transferred to it, it binds each output to the corresponding
+;;; value obtained by evaluating its form.
 ;;;
 ;;; Construct nodes are used to handle constants, or references to
-;;; variables from outside of the loop nest.
+;;; functions or variables from outside of the loop nest.
 (defclass ir-construct (ir-node)
   ((%inputs :type null :initform '())
    (%form
