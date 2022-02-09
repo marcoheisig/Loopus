@@ -173,11 +173,48 @@
                 (error "Reference to the undefined function ~S."
                        function-name)))))))
     ((list (list* 'lambda (list* lambda-list) body))
+     (when (intersection lambda-list lambda-list-keywords)
+       (error "Lambda list keywords aren't supported, yet."))
+     ;; TODO The Loopus IR is designed such that each statement returns a
+     ;; fixed, constant number of values.  The problematic part is figuring
+     ;; out what that number is for converting the body of an enclose node.
+     ;;
+     ;; Luckily, we are not writing a general purpose Lisp compiler, so we
+     ;; can just enforce a behavior.  The question is which behavior
+     ;; strikes the right balance.  The possible solutions are:
+     ;;
+     ;; 1. The number of values returned by a local function is always 1.
+     ;;
+     ;; 2. The number of values returned by a local function is the maximum
+     ;;    of the number of expected values of all the local call sites.
+     ;;
+     ;; 3. The number of values returned by a local function must be
+     ;;    supplied with a suitable ftype declaration.
+     ;;
+     ;; 4. The number of values returned by a local function is derived by
+     ;;    static analysis.
      (multiple-value-bind (forms declarations) (alexandria:parse-body body)
        (declare (ignore declarations))
-       (let ((value (make-instance 'ir-value)))
-         ;; TODO
-         (push-node (make-instance 'ir-enclose :outputs (list value)))
+       (let* ((value (make-instance 'ir-value))
+              (arguments
+                (loop repeat (length lambda-list)
+                      collect (make-instance 'ir-value)))
+              (lexenv
+                (augment-lexenv
+                 lexenv
+                 (loop for variable in lambda-list
+                       for value in arguments
+                       collect (make-vrecord variable value))
+                 '()))
+              (body-node
+                (let* ((initial-node (make-instance 'ir-initial-node))
+                       (*predecessor* initial-node))
+                  (ir-convert `(locally ,@forms) lexenv 1)
+                  initial-node)))
+         (push-node (make-instance 'ir-enclose
+                      :outputs (list value)
+                      :arguments arguments
+                      :body body-node))
          value)))
     (_ (error "Malformed function special form :~S."
               `(function ,@rest)))))

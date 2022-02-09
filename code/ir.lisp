@@ -8,9 +8,9 @@
 ;;; successor is NIL is called the final node.  When control is transferred
 ;;; to a node, it reads its (possibly empty) list of input values, computes
 ;;; its output values and transfers control to its successor.  The final
-;;; node returns its outputs.  Some nodes, such as the IR-IF and IR-LOOP,
-;;; have a reference to one or more other initial IR nodes that are
-;;; processed specially.
+;;; node returns its outputs.  Some nodes, such as IR-IF, IR-ENCLOSE, and
+;;; IR-LOOP, have a reference to one or more other initial IR nodes that
+;;; are processed specially.
 
 (defclass ir-node ()
   (;; The IR node that this node transfers control to.
@@ -107,7 +107,7 @@
    (%outputs :initform '() :type null)
    (%predecessor :type null)))
 
-;;; A loop node has three inputs (start, step, and end), zero outputs, one
+;;; A loop node has three inputs (start, end, and step), zero outputs, one
 ;;; successor, and a control flow node that marks the beginning of its
 ;;; body.  When control is transferred to the loop node, it repeatedly
 ;;; evaluates its body in an environment where the loop variable is bound
@@ -163,22 +163,19 @@
    (%form
     :initarg :form
     :initform (alexandria:required-argument :form)
-    :reader ir-leaf-form)))
+    :reader ir-construct-form)))
 
 ;;; An enclose node creates a function at run time.
 (defclass ir-enclose (ir-node)
-  (;; A list of IR values that are bound on each invocation of that
+  ((%inputs :initform '() :type null)
+   ;; A list of IR values that are bound on each invocation of that
    ;; function.
    (%arguments
     :initarg :arguments
     :initform (alexandria:required-argument :arguments)
     :type list
     :reader ir-enclose-arguments)
-   (%lexenv
-    :initarg :lexenv
-    :initform (alexandria:required-argument :lexenv)
-    :reader ir-enclose-lexenv)
-   (%initial-node
-    :initarg :initial-node
-    :initform (alexandria:required-argument :initial-node)
-    :reader ir-enclose-initial-node)))
+   (%body
+    :initarg :body
+    :initform (alexandria:required-argument :body)
+    :reader ir-enclose-body)))
