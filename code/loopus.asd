@@ -21,6 +21,7 @@
    (:file "lexenv")
    (:file "ir-convert")
    (:file "ir-specialize")
+   (:file "ir-remove-dead-code")
    (:file "ir-hoist-loop-invariant-code")
    (:file "ir-eliminate-common-subexpressions")
    (:file "ir-split-loops")

@@ -6,4 +6,5 @@
     (ir-split-loops
      (ir-eliminate-common-subexpressions
       (ir-hoist-loop-invariant-code
-       (ir-specialize ir)))))))
+       (ir-remove-dead-code
+        (ir-specialize ir))))))))
