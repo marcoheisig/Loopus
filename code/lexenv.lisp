@@ -1,4 +1,4 @@
-(in-package #:loopus)
+(in-package #:Loopus)
 
 ;;; The lexical environments used for IR conversion.
 

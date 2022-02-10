@@ -1,4 +1,4 @@
-(in-package #:loopus)
+(in-package #:Loopus)
 
 ;;; This file contains the machinery for converting a loop nest to Loopus
 ;;; IR.  This is essentially a variation of EVAL for a very limited subset

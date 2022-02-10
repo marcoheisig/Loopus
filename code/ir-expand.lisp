@@ -1,4 +1,4 @@
-(in-package #:loopus)
+(in-package #:Loopus)
 
 ;; A hash table, mapping from values to symbols.
 (defvar *ir-expand-value-names*)

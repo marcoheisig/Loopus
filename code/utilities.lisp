@@ -1,4 +1,4 @@
-(in-package #:loopus)
+(in-package #:Loopus)
 
 (deftype non-nil-symbol ()
   '(and symbol (not null)))

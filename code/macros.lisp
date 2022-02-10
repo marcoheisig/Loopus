@@ -1,4 +1,4 @@
-(in-package #:loopus)
+(in-package #:Loopus)
 
 (defmacro begin (&body body)
   `(for (,(gensym) 0 1) ,@body))

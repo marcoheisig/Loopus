@@ -1,4 +1,4 @@
-(in-package #:loopus)
+(in-package #:Loopus)
 
 (defun ir-optimize (ir)
   (ir-vectorize

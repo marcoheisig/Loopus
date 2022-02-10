@@ -1,4 +1,4 @@
-(defsystem #:loopus
+(defsystem #:Loopus
   :description "A portable loop optimization framework for Common Lisp."
   :author "Marco Heisig <marco.heisig@fau.de>"
   :license "MIT"
@@ -7,7 +7,6 @@
   ("alexandria"
    "closer-mop"
    "bordeaux-threads"
-   "loopus.dlist"
    "trivia"
    "trivial-cltl2"
    "trivial-macroexpand-all")
