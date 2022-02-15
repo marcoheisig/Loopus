@@ -1,4 +1,4 @@
-(in-package #:Loopus)
+(in-package #:loopus.ir)
 
 (defun ir-eliminate-common-subexpressions (ir)
   "Returns a copy of IR in which all calls to the same, pure function with

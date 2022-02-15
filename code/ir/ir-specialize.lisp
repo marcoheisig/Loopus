@@ -1,4 +1,4 @@
-(in-package #:Loopus)
+(in-package #:loopus.ir)
 
 (defun ir-specialize (ir)
   "Returns a copy of IR in which the derived type of each value is refined

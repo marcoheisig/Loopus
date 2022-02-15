@@ -1,4 +1,4 @@
-(in-package #:Loopus)
+(in-package #:loopus.ir)
 
 (defun ir-vectorize (ir)
   "Returns a copy of IR in which sufficiently simple inner loops have been

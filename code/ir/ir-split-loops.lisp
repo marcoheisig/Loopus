@@ -1,4 +1,4 @@
-(in-package #:Loopus)
+(in-package #:loopus.ir)
 
 (defun ir-split-loops (ir)
   "Returns a copy of IR in which some loops with a predicate that depend

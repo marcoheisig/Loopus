@@ -1,6 +1,15 @@
-(in-package #:Loopus)
+(in-package #:loopus.ir)
 
-;;; The lexical environments used for IR conversion.
+;;; The lexical environment used for IR conversion.
+
+(deftype non-nil-symbol ()
+  '(and symbol (not null)))
+
+(deftype function-name ()
+  '(or non-nil-symbol (cons (eql setf) (cons non-nil-symbol null))))
+
+(deftype variable-name ()
+  'non-nil-symbol)
 
 (defgeneric lexenv-frecord (lexenv function-name))
 

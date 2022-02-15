@@ -9,24 +9,29 @@
    "bordeaux-threads"
    "trivia"
    "trivial-cltl2"
-   "trivial-macroexpand-all")
+   "trivial-macroexpand-all"
+   "typo")
 
   :serial t
   :components
   ((:file "packages")
-   (:file "utilities")
-   (:file "variable")
-   (:file "polynomial")
-   (:file "ir")
-   (:file "lexenv")
-   (:file "ir-convert")
-   (:file "ir-specialize")
-   (:file "ir-remove-dead-code")
-   (:file "ir-hoist-loop-invariant-code")
-   (:file "ir-eliminate-common-subexpressions")
-   (:file "ir-split-loops")
-   (:file "ir-unroll-loops")
-   (:file "ir-vectorize")
-   (:file "ir-optimize")
-   (:file "ir-expand")
+   (:module "math"
+    :components
+    ((:file "variable")
+     (:file "polynomial")))
+   (:module "ir"
+    :components
+    ((:file "generic-functions")
+     (:file "classes-and-methods")
+     (:file "lexenv")
+     (:file "ir-convert")
+     (:file "ir-specialize")
+     (:file "ir-remove-dead-code")
+     (:file "ir-hoist-loop-invariant-code")
+     (:file "ir-eliminate-common-subexpressions")
+     (:file "ir-split-loops")
+     (:file "ir-unroll-loops")
+     (:file "ir-vectorize")
+     (:file "ir-optimize")
+     (:file "ir-expand")))
    (:file "macros")))

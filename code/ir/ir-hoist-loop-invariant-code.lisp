@@ -1,4 +1,4 @@
-(in-package #:Loopus)
+(in-package #:loopus.ir)
 
 (defun ir-hoist-loop-invariant-code (ir)
   "Returns a copy of IR in which each call to a pure function has been

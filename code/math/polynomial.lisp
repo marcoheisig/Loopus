@@ -1,4 +1,4 @@
-(in-package #:Loopus)
+(in-package #:loopus.math)
 
 ;;; Variables
 

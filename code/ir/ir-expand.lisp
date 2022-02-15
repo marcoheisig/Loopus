@@ -1,4 +1,4 @@
-(in-package #:Loopus)
+(in-package #:loopus.ir)
 
 ;; A hash table, mapping from values to symbols.
 (defvar *ir-expand-value-names*)
@@ -15,10 +15,11 @@
     (ir-expand-node ir)))
 
 (defmethod ir-expand-node ((ir-initial-node ir-initial-node))
-  `(basic-block
-    ,@(loop for node = (ir-node-successor ir-initial-node) then (ir-node-successor node)
-            until (null node)
-            collect (ir-expand-node node))))
+  (let ((final-node (ir-final-node ir-initial-node)))
+    `(basic-block
+      ,@(loop for node = (ir-node-successor ir-initial-node) then (ir-node-successor node)
+              until (eq node final-node)
+              collect (ir-expand-node node)))))
 
 (defmethod ir-expand-node ((ir-loop ir-loop))
   (let ((index (value-name (ir-loop-variable ir-loop))))
@@ -37,8 +38,8 @@
 (defmethod ir-expand-node ((ir-if ir-if))
   `(,(mapcar #'value-name (ir-node-outputs ir-if))
     (if ,(value-name (first (ir-node-inputs ir-if)))
-        ,(ir-expand-node (ir-if-then-node ir-if))
-        ,(ir-expand-node (ir-if-else-node ir-if)))))
+        ,(ir-expand-node (ir-if-then-initial-node ir-if))
+        ,(ir-expand-node (ir-if-else-initial-node ir-if)))))
 
 (defmethod ir-expand-node ((ir-construct ir-construct))
   `(,(mapcar #'value-name (ir-node-outputs ir-construct))
@@ -46,8 +47,8 @@
 
 (defmethod ir-expand-node ((ir-enclose ir-enclose))
   `(,(mapcar #'value-name (ir-node-outputs ir-enclose))
-    (lambda ,(mapcar #'value-name (ir-enclose-arguments ir-enclose))
-      ,(ir-expand-node (ir-enclose-body ir-enclose)))))
+    (lambda ,(mapcar #'value-name (ir-enclose-argument-values ir-enclose))
+      ,(ir-expand-node (ir-enclose-body-initial-node ir-enclose)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
