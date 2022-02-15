@@ -24,12 +24,17 @@
 (defmethod ir-expand-node ((ir-loop ir-loop))
   (let ((index (value-name (ir-loop-variable ir-loop))))
     (destructuring-bind (start end step) (ir-node-inputs ir-loop)
-      `(()
-        (let ((,index ,(value-name start)))
-          (declare (fixnum ,index))
-          (loop until (= ,index ,(value-name end)) do
-            (progn ,(ir-expand-node (ir-loop-body ir-loop)))
-            (incf ,index ,(value-name step))))))))
+      (alexandria:with-gensyms (loop-start loop-end)
+        `(()
+          (let ((,index ,(value-name start)))
+            (declare (fixnum ,index))
+            (tagbody ,loop-start
+               (when (= ,index ,(value-name end))
+                 (go ,loop-end))
+               ,(ir-expand-node (ir-loop-body ir-loop))
+               (incf ,index ,(value-name step))
+               (go ,loop-start)
+               ,loop-end)))))))
 
 (defmethod ir-expand-node ((ir-call ir-call))
   `(,(mapcar #'value-name (ir-node-outputs ir-call))
