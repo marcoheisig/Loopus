@@ -21,8 +21,7 @@
      (:file "polynomial")))
    (:module "ir"
     :components
-    ((:file "generic-functions")
-     (:file "classes-and-methods")
+    ((:file "ir")
      (:file "lexenv")
      (:file "ir-convert")
      (:file "ir-specialize")
