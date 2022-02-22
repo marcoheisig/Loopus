@@ -130,7 +130,7 @@
         (vrecord-value vrecord)
         (multiple-value-bind (kind localp alist)
             (trivial-cltl2:variable-information variable-name env)
-          (declare (ignore localp alist))
+          (declare (ignore localp))
           (case kind
             (:special
              (error "Cannot (yet) handle special variables."))
@@ -141,15 +141,51 @@
                   (alexandria:ensure-gethash
                    variable-name
                    *variable-references*
-                   (let ((value (make-instance 'ir-value)))
+                   (let ((ir-value (make-instance 'ir-value)))
+                     (loop for (key . value) in alist
+                           when (eq key 'type) do
+                             (ir-value-declare-type ir-value value))
                      (push-node
                       (make-node 'ir-construct
                                   :form variable-name
-                                  :outputs (list value)))
-                     value)))))
+                                  :outputs (list ir-value)))
+                     ir-value)))))
             (t
              (error "Reference to undefined variable ~S."
                     variable-name)))))))
+
+(defun map-declaration-specifiers (function declarations)
+  (dolist (declaration declarations)
+    (trivia:match declaration
+      ((list* 'declare declaration-specifiers)
+       (dolist (declaration-specifier declaration-specifiers)
+         (funcall function declaration-specifier)))
+      (_ (error "Malformed declaration: ~S" declaration)))))
+
+(defparameter *declaration-identifiers*
+  '(dynamic-extent  ignore     optimize
+    ftype           inline     special
+    ignorable       notinline  type))
+
+(defun map-type-declarations (function declarations)
+  (map-declaration-specifiers
+   (lambda (declaration-specifier)
+     (trivia:match declaration-specifier
+       ((list* 'type type-specifier variables)
+        (dolist (variable variables)
+          (funcall function variable type-specifier)))
+       ((list* type-specifier variables)
+        (when (member type-specifier *declaration-identifiers*)
+          (trivia.fail:fail))
+        (dolist (variable variables)
+          (funcall function variable type-specifier)))))
+   declarations))
+
+(defun handle-type-declarations (declarations lexenv)
+  (map-type-declarations
+   (lambda (variable type)
+     (ir-value-declare-type (ir-convert variable lexenv) type))
+   declarations))
 
 ;;; Conversion of Compound Forms
 
@@ -206,7 +242,6 @@
      (when (intersection lambda-list lambda-list-keywords)
        (error "Lambda list keywords aren't supported, yet."))
      (multiple-value-bind (forms declarations) (alexandria:parse-body body)
-       (declare (ignore declarations))
        (let* ((value (make-instance 'ir-value))
               (arguments
                 (loop repeat (length lambda-list)
@@ -220,6 +255,7 @@
                  '()))
               (ir-enclose (make-instance 'ir-node))
               (body-node (make-ir-initial-and-ir-final-node ir-enclose)))
+         (handle-type-declarations declarations lexenv)
          ;; Convert the body.
          (let ((*predecessor* body-node)
                (*successor* (ir-node-successor body-node)))
@@ -246,24 +282,24 @@
     ((_ (eql 'locally)) rest lexenv expected-values)
   (multiple-value-bind (body-forms declarations)
       (alexandria:parse-body rest)
-    (declare (ignore declarations))
+    (handle-type-declarations declarations lexenv)
     (ir-convert-progn body-forms lexenv expected-values)))
 
 (defmethod ir-convert-compound-form
     ((_ (eql 'let)) rest lexenv expected-values)
   (unless (and (consp rest) (listp (first rest)))
     (error "Malformed let form: ~S" `(let ,@rest)))
-  (multiple-value-bind (forms declarations) (alexandria:parse-body (rest rest))
-    (declare (ignore declarations))
-    (ir-convert-progn
-     forms
-     (augment-lexenv
-      lexenv
-      (loop for (name form) in (mapcar #'canonicalize-binding (first rest))
-            collect
-            (make-vrecord name (ir-convert form lexenv)))
-      '())
-     expected-values)))
+  (multiple-value-bind (forms declarations)
+      (alexandria:parse-body (rest rest))
+    (let ((lexenv
+            (augment-lexenv
+             lexenv
+             (loop for (name form) in (mapcar #'canonicalize-binding (first rest))
+                   collect
+                   (make-vrecord name (ir-convert form lexenv)))
+             '())))
+      (handle-type-declarations declarations lexenv)
+      (ir-convert-progn forms lexenv expected-values))))
 
 (defmethod ir-convert-compound-form
     ((_ (eql 'let*)) rest lexenv expected-values)
@@ -275,8 +311,9 @@
            lexenv
            (list (make-vrecord name (ir-convert form lexenv)))
            '())))
-  (multiple-value-bind (forms declarations) (alexandria:parse-body (rest rest))
-    (declare (ignore declarations))
+  (multiple-value-bind (forms declarations)
+      (alexandria:parse-body (rest rest))
+    (handle-type-declarations declarations lexenv)
     (ir-convert-progn forms lexenv expected-values)))
 
 (defun canonicalize-binding (binding)
@@ -292,30 +329,88 @@
   (unless (and (consp rest)
                (listp (first rest)))
     (error "Malformed flet form: ~S" `(flet ,@rest)))
-  (multiple-value-bind (forms declarations) (alexandria:parse-body (rest rest))
-    (declare (ignore declarations))
-    (ir-convert-progn
-     forms
-     (augment-lexenv
-      lexenv
-      '()
-      (loop for definition in (first rest)
-            collect
-            (trivia:match definition
-              ((list* (and function-name (type function-name)) (list* lambda-list) body)
-               (make-frecord
-                function-name
-                (ir-convert `(function (lambda ,lambda-list ,@body)) lexenv)))
-              (_ (error "Malformed flet definition: ~S"
-                        definition)))))
-     expected-values)))
+  (let ((lexenv
+          (augment-lexenv
+           lexenv
+           '()
+           (loop for definition in (first rest)
+                 collect
+                 (trivia:match definition
+                   ((list* (and function-name (type function-name)) (list* lambda-list) body)
+                    (make-frecord
+                     function-name
+                     (ir-convert `(function (lambda ,lambda-list ,@body)) lexenv)))
+                   (_ (error "Malformed flet definition: ~S"
+                             definition)))))))
+    (multiple-value-bind (forms declarations)
+        (alexandria:parse-body (rest rest))
+      (handle-type-declarations declarations lexenv)
+      (ir-convert-progn forms lexenv expected-values))))
 
 (defmethod ir-convert-compound-form
     ((_ (eql 'the)) rest lexenv expected-values)
   (unless (= 2 (length rest))
     (error "Malformed the form: ~S" `(the ,@rest)))
-  ;; TODO
-  (ir-convert (second rest) lexenv expected-values))
+  (multiple-value-bind (required optional rest restp)
+      (parse-values-type-specifier (first rest))
+    (let* ((values (multiple-value-list (ir-convert (second rest) lexenv expected-values)))
+           (rest values))
+      (loop for type in required while values do
+        (ir-value-declare-type (pop rest) type))
+      (loop for type in optional while values do
+        (ir-value-declare-type (pop rest) `(or ,type null)))
+      (when restp
+        (loop while values do
+          (ir-value-declare-type (pop rest) rest)))
+      (values-list values))))
+
+(defun parse-values-type-specifier (type-specifier)
+  (trivia:match type-specifier
+    ((list* 'values rest)
+     (let ((required '())
+           (optional '())
+           (rest-type nil)
+           (rest-type-p nil))
+       (labels ((fail ()
+                  (error "Invalid values type specifier: ~S"
+                         type-specifier))
+                (process-required (rest)
+                  (unless (null rest)
+                    (let ((first (first rest))
+                          (rest (rest rest)))
+                      (case first
+                        (&rest (process-rest rest))
+                        (&optional (process-optional rest))
+                        (otherwise
+                         (push first required)
+                         (process-required rest))))))
+                (process-optional (rest)
+                  (unless (null rest)
+                    (let ((first (first rest))
+                          (rest (rest rest)))
+                      (case first
+                        (&rest (process-rest rest))
+                        (&optional (fail))
+                        (otherwise
+                         (push first optional)
+                         (process-optional rest))))))
+                (process-rest (rest)
+                  (when (null rest) (fail))
+                  (let ((first (first rest))
+                        (rest (rest rest)))
+                    (unless (null rest) (fail))
+                    (case first
+                      (&rest (fail))
+                      (&optional (fail))
+                      (otherwise
+                       (setf rest-type-p t)
+                       (setf rest-type first))))))
+         (process-required rest)
+         (values (reverse required)
+                 (reverse optional)
+                 rest-type
+                 rest-type-p))))
+    (_ (values (list type-specifier) '() nil nil))))
 
 (defmethod ir-convert-compound-form
     ((_ (eql 'if)) rest lexenv expected-values)
@@ -352,6 +447,7 @@
            (start-value (ir-convert start lexenv))
            (end-value (ir-convert end lexenv))
            (step-value (ir-convert step lexenv)))
+      (ir-value-declare-type variable 'fixnum)
       (let ((lexenv (augment-lexenv lexenv (list (make-vrecord variable-name variable)) '()))
             (*predecessor* body-initial-node)
             (*successor* (ir-node-successor body-initial-node)))

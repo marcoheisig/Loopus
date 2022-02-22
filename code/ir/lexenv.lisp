@@ -11,10 +11,6 @@
 (deftype variable-name ()
   'non-nil-symbol)
 
-(defgeneric lexenv-frecord (lexenv function-name))
-
-(defgeneric lexenv-vrecord (lexenv variable-name))
-
 (defgeneric augment-lexenv (lexenv vrecords frecords))
 
 (defclass lexenv ()

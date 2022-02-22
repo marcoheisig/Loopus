@@ -74,6 +74,8 @@
 
 (defgeneric ir-value-derived-type (ir-value))
 
+(defgeneric ir-value-declare-type (ir-value type-specifier))
+
 
 (defgeneric insert-ir-node-before (ir-node future-successor))
 
@@ -115,6 +117,21 @@
 
 (defun ensure-ir-value-user (ir-value user)
   (pushnew user (slot-value ir-value '%users)))
+
+(defmethod ir-value-declare-type ((ir-value ir-value) new-type)
+  (let ((old-type (ir-value-declared-type ir-value)))
+    (cond ((subtypep old-type new-type)
+           (values))
+          ((subtypep new-type old-type)
+           (setf (slot-value ir-value '%declared-type)
+                 new-type))
+          ((subtypep `(and ,new-type ,old-type) nil)
+           (error "Incompatible declared types ~S and ~S."
+                  new-type old-type))
+          (t
+           (setf (slot-value ir-value '%declared-type)
+                 `(and ,new-type ,old-type))))
+    ir-value))
 
 (defclass ir-node-with-dominator (ir-node)
   (;; The IR node 'above' this one, i.e., the unique loop or if node that
@@ -381,4 +398,4 @@
     (setf (ir-node-%predecessor c) a)
     (setf (ir-node-%successor b) b)
     (setf (ir-node-%predecessor b) b)
-    b))
+    ir-node))

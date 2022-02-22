@@ -67,6 +67,7 @@
      #:ir-value-users
      #:ir-value-declared-type
      #:ir-value-derived-type
+     #:ir-value-declare-type
 
      #:insert-ir-node-before
      #:insert-ir-node-after
