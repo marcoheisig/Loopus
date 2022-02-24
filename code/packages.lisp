@@ -45,13 +45,13 @@
 
      #:ir-loop
      #:ir-loop-p
-     #:ir-loop-body-initial-node
+     #:ir-loop-body
      #:ir-loop-variable
 
      #:ir-if
      #:ir-if-p
-     #:ir-if-then-initial-node
-     #:ir-if-else-initial-node
+     #:ir-if-then
+     #:ir-if-else
 
      #:ir-construct
      #:ir-construct-p
@@ -59,7 +59,7 @@
      #:ir-enclose
      #:ir-enclose-p
      #:ir-enclose-argument-values
-     #:ir-enclose-body-initial-node
+     #:ir-enclose-body
 
      #:ir-value
      #:ir-value-p
@@ -72,9 +72,7 @@
      #:insert-ir-node-before
      #:insert-ir-node-after
      #:extract-ir-node
-     #:map-ir-node-successors
-     #:map-ir-node-predecessors
-     #:map-ir-nodes
+     #:map-block-inner-nodes
 
      #:ir-convert-in-environment
      #:ir-optimize

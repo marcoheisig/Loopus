@@ -43,8 +43,8 @@
 (defmethod ir-expand-node ((ir-if ir-if))
   `(,(mapcar #'value-name (ir-node-outputs ir-if))
     (if ,(value-name (first (ir-node-inputs ir-if)))
-        ,(ir-expand-node (ir-if-then-initial-node ir-if))
-        ,(ir-expand-node (ir-if-else-initial-node ir-if)))))
+        ,(ir-expand-node (ir-if-then ir-if))
+        ,(ir-expand-node (ir-if-else ir-if)))))
 
 (defmethod ir-expand-node ((ir-construct ir-construct))
   `(,(mapcar #'value-name (ir-node-outputs ir-construct))
@@ -53,7 +53,7 @@
 (defmethod ir-expand-node ((ir-enclose ir-enclose))
   `(,(mapcar #'value-name (ir-node-outputs ir-enclose))
     (lambda ,(mapcar #'value-name (ir-enclose-argument-values ir-enclose))
-      ,(ir-expand-node (ir-enclose-body-initial-node ir-enclose)))))
+      ,(ir-expand-node (ir-enclose-body ir-enclose)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

@@ -12,6 +12,14 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
+;;; Special Variables
+
+(defvar *predecessor*)
+
+(defvar *successor*)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
 ;;; Generic Functions
 
 (defgeneric ir-node-p (object) (:method ((object t)) nil))
@@ -40,16 +48,16 @@
 
 (defgeneric ir-loop-p (object) (:method ((object t)) nil))
 
-(defgeneric ir-loop-body-initial-node (ir-loop))
+(defgeneric ir-loop-body (ir-loop))
 
 (defgeneric ir-loop-variable (ir-loop))
 
 
 (defgeneric ir-if-p (object) (:method ((object t)) nil))
 
-(defgeneric ir-if-then-initial-node (ir-if))
+(defgeneric ir-if-then (ir-if))
 
-(defgeneric ir-if-else-initial-node (ir-if))
+(defgeneric ir-if-else (ir-if))
 
 
 (defgeneric ir-construct-p (object) (:method ((object t)) nil))
@@ -61,7 +69,7 @@
 
 (defgeneric ir-enclose-argument-values (ir-enclose))
 
-(defgeneric ir-enclose-body-initial-node (ir-enclose))
+(defgeneric ir-enclose-body (ir-enclose))
 
 
 (defgeneric ir-value-p (object) (:method ((object t)) nil))
@@ -76,6 +84,8 @@
 
 (defgeneric ir-value-declare-type (ir-value type-specifier))
 
+
+(defgeneric map-block-inner-nodes (function ir-node))
 
 (defgeneric insert-ir-node-before (ir-node future-successor))
 
@@ -139,7 +149,7 @@
    (%dominator
     :initarg :dominator
     :initform (alexandria:required-argument :dominator)
-    :type (or null ir-loop)
+    :type (or null ir-node)
     :reader ir-node-dominator)))
 
 (defclass ir-node-with-inputs (ir-node)
@@ -177,7 +187,7 @@
   (;; The IR node that this node transfers control to.
    (%successor
     :initarg :successor
-    :initform (alexandria:required-argument :successor)
+    :initform *successor*
     :type ir-node
     :reader ir-node-successor
     :writer (setf ir-node-%successor))))
@@ -186,7 +196,7 @@
   (;; The IR node that this node receives control form.
    (%predecessor
     :initarg :predecessor
-    :initform (alexandria:required-argument :predecessor)
+    :initform *predecessor*
     :type ir-node
     :reader ir-node-predecessor
     :writer (setf ir-node-%predecessor))))
@@ -208,6 +218,11 @@
 (defclass ir-inner-node (ir-node-with-predecessor ir-node-with-successor)
   ())
 
+(defmethod shared-initialize :after
+    ((inner-node ir-inner-node) slot-names &key &allow-other-keys)
+  (insert-ir-node-after inner-node *predecessor*)
+  (setf *predecessor* inner-node))
+
 ;;; A loop node is an inner node with three inputs (start, end, and
 ;;; step), zero outputs, and a control flow node that marks the beginning
 ;;; of its body.  When control is transferred to the loop node, it
@@ -218,9 +233,9 @@
     :initarg :variable
     :type ir-value
     :reader ir-loop-variable)
-   (%body-initial-node
-    :initarg :body-initial-node
-    :initform (alexandria:required-argument :body-initial-node)
+   (%body
+    :initarg :body
+    :initform (alexandria:required-argument :body)
     :type ir-initial-node
     :reader ir-loop-body)))
 
@@ -245,16 +260,16 @@
 ;;; the input is false.  Then it binds its outputs to the values produced
 ;;; by whatever chain of nodes was chosen.
 (defclass ir-if (ir-inner-node ir-node-with-inputs ir-node-with-outputs)
-  ((%then-initial-node
-    :initarg :then-initial-node
-    :initform (alexandria:required-argument :then-initial-node)
+  ((%then
+    :initarg :then
+    :initform (alexandria:required-argument :then)
     :type list
-    :reader ir-if-then-initial-node)
-   (%else-initial-node
-    :initarg :else-initial-node
-    :initform (alexandria:required-argument :else-initial-node)
+    :reader ir-if-then)
+   (%else
+    :initarg :else
+    :initform (alexandria:required-argument :else)
     :type list
-    :reader ir-if-else-initial-node)))
+    :reader ir-if-else)))
 
 ;;; A construct node is an inner node with no inputs and some number of
 ;;; outputs.  When control is transferred to it, it binds each output to
@@ -280,10 +295,10 @@
     :initform (alexandria:required-argument :argument-values)
     :type list
     :reader ir-enclose-argument-values)
-   (%body-initial-node
-    :initarg :body-initial-node
-    :initform (alexandria:required-argument :body-initial-node)
-    :reader ir-enclose-body-initial-node)))
+   (%body
+    :initarg :body
+    :initform (alexandria:required-argument :body)
+    :reader ir-enclose-body)))
 
 (defmethod shared-initialize :after
     ((ir-enclose ir-enclose) slot-names &key &allow-other-keys)
@@ -364,6 +379,16 @@
 (defmethod ir-value-derived-type (ir-value)
   (typo:ntype-type-specifier
    (ir-value-derived-ntype ir-value)))
+
+(defmethod map-block-inner-nodes (function (ir-node ir-node))
+  (map-block-inner-nodes function (ir-initial-node ir-node)))
+
+(defmethod map-block-inner-nodes (function (initial-node ir-initial-node))
+  (let ((final-node (ir-final-node initial-node)))
+    (loop for node = (ir-node-successor initial-node)
+            then (ir-node-successor node)
+          until (eq node final-node) do
+            (funcall function node))))
 
 (defmethod insert-ir-node-before
     ((ir-node ir-inner-node)

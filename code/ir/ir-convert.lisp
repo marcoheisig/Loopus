@@ -5,65 +5,51 @@
 ;;; of Common Lisp, except that it doesn't actually compute a result but
 ;;; assemble IR nodes.
 
-;;; The most recent IR node that has been created.
-(defvar *predecessor*)
-
-;; The final node of the block being converted right now.
-(defvar *successor*)
-
-(defun push-node (node)
-  (insert-ir-node-after node *predecessor*)
-  (setf *predecessor* node))
-
-(defun make-node (class &rest initargs &key &allow-other-keys)
-  (apply #'make-instance class
-           :predecessor *predecessor*
-           :successor *predecessor*
-           initargs))
-
-(defun change-node-class (instance new-class &rest initargs &key &allow-other-keys)
-  (apply #'change-class instance new-class
-           :predecessor *predecessor*
-           :successor *predecessor*
-           initargs))
-
 ;;; An EQL hash table, mapping from each constant to the IR value resulting
 ;;; from constructing that constant.
 (defvar *constants*)
 
 ;;; An EQ hash table, mapping from variables to the IR value resulting from
 ;;; a reference to that variable.
-(defvar *variable-references*)
+(defvar *variables*)
 
 ;;; An EQUAL hash table, mapping from function names to the IR value
 ;;; resulting from a reference to that function.
-(defvar *function-references*)
+(defvar *functions*)
+
+;;; The initial node of the entire IR that is currently being processed.
+(defvar *toplevel-initial-node*)
 
 (defun ir-convert-in-environment (form env &optional (expected-values '*))
   (multiple-value-bind (initial-node final-node)
       (make-ir-initial-and-ir-final-node nil)
-    (let ((*predecessor* initial-node)
+    (let ((*toplevel-initial-node* initial-node)
           (*successor* final-node)
+          (*predecessor* initial-node)
           (*constants* (make-hash-table))
-          (*variable-references* (make-hash-table :test #'eq))
-          (*function-references* (make-hash-table :test #'equal)))
-      (ir-convert
-       ;; TODO It would be better not to use macroexpand-all, but to expand
-       ;; things ourselves.  Otherwise we risk that an implementation expands
-       ;; macros in a way that relies on internals we can't handle.
-       (trivial-macroexpand-all:macroexpand-all
-        ;; Each occurrence of the FOR macro is turned into a call to the
-        ;;  function %FOR.  This function is not defined, but handled specially
-        ;;  by the IR conversion process.
-        `(macrolet ((for ((variable start end &optional (step 1)) &body body)
-                      `(%for ',variable ,start ,end ,step (locally ,@body))))
-           ,form)
-        env)
-       (make-lexenv env)
-       expected-values)
+          (*variables* (make-hash-table :test #'eq))
+          (*functions* (make-hash-table :test #'equal)))
+      ;; Insert a dummy node right after the initial node, so that the
+      ;; toplevel initial node and the node after which we insert the
+      ;; following statements are disjoint.
+      (let ((dummy (make-instance 'ir-inner-node)))
+        (ir-convert
+         ;; TODO It would be better not to use macroexpand-all, but to expand
+         ;; things ourselves.  Otherwise we risk that an implementation expands
+         ;; macros in a way that relies on internals we can't handle.
+         (trivial-macroexpand-all:macroexpand-all
+          ;; Each occurrence of the FOR macro is turned into a call to the
+          ;;  function %FOR.  This function is not defined, but handled specially
+          ;;  by the IR conversion process.
+          `(macrolet ((for ((variable start end &optional (step 1)) &body body)
+                        `(%for ',variable ,start ,end ,step (locally ,@body))))
+             ,form)
+          env)
+         (make-lexenv env)
+         expected-values)
+        ;; Remove the dummy node.
+        (extract-ir-node dummy))
       (values initial-node final-node))))
-
-(defgeneric ir-convert-constant (constant))
 
 (defgeneric ir-convert-symbol (symbol lexenv expected-values))
 
@@ -105,16 +91,43 @@
 
 ;;; Conversion of Constants
 
-(defmethod ir-convert-constant ((constant t))
+(defun ir-convert-constant (constant)
   (values
    (alexandria:ensure-gethash
     constant
     *constants*
-    (let ((value (make-instance 'ir-value)))
-      (push-node
-       (make-node 'ir-construct
-                   :form `',constant
-                   :outputs (list value)))
+    (let ((value (make-instance 'ir-value :declared-type `(eql ,constant)))
+          (*predecessor* *toplevel-initial-node*)
+          (*successor* (ir-node-successor *toplevel-initial-node*)))
+      (make-instance 'ir-construct
+        :form `',constant
+        :outputs (list value))
+      value))))
+
+(defun ir-convert-variable (variable-name declared-type)
+  (values
+   (alexandria:ensure-gethash
+    variable-name
+    *variables*
+    (let ((value (make-instance 'ir-value :declared-type declared-type))
+          (*predecessor* *toplevel-initial-node*)
+          (*successor* (ir-node-successor *toplevel-initial-node*)))
+      (make-instance 'ir-construct
+        :form variable-name
+        :outputs (list value))
+      value))))
+
+(defun ir-convert-function (function-name)
+  (values
+   (alexandria:ensure-gethash
+    function-name
+    *functions*
+    (let ((value (make-instance 'ir-value :declared-type `(eql ,function-name)))
+          (*predecessor* *toplevel-initial-node*)
+          (*successor* (ir-node-successor *toplevel-initial-node*)))
+      (make-instance 'ir-construct
+        :form `(function ,function-name)
+        :outputs (list value))
       value))))
 
 ;;; Conversion of Symbols
@@ -137,19 +150,11 @@
             ((:lexical :global :constant)
              (if (constantp variable-name)
                  (ir-convert-constant (eval variable-name))
-                 (values
-                  (alexandria:ensure-gethash
-                   variable-name
-                   *variable-references*
-                   (let ((ir-value (make-instance 'ir-value)))
-                     (loop for (key . value) in alist
-                           when (eq key 'type) do
-                             (ir-value-declare-type ir-value value))
-                     (push-node
-                      (make-node 'ir-construct
-                                  :form variable-name
-                                  :outputs (list ir-value)))
-                     ir-value)))))
+                 (ir-convert-variable
+                  variable-name
+                  `(and ,@(loop for (key . value) in alist
+                                when (eq key 'type)
+                                  collect value)))))
             (t
              (error "Reference to undefined variable ~S."
                     variable-name)))))))
@@ -196,10 +201,9 @@
 (defmethod ir-convert-compound-form
     ((_ (eql 'funcall)) rest lexenv expected-values)
   (let ((outputs (make-outputs expected-values)))
-    (push-node
-     (make-node 'ir-call
-                 :inputs (mapcar (lambda (form) (ir-convert form lexenv)) rest)
-                 :outputs outputs))
+    (make-instance 'ir-call
+      :inputs (mapcar (lambda (form) (ir-convert form lexenv)) rest)
+      :outputs outputs)
     (values-list outputs)))
 
 (defmethod ir-convert-compound-form
@@ -225,16 +229,7 @@
                 (error "Invalid reference to the special form ~S."
                        function-name))
                (:function
-                (values
-                 (alexandria:ensure-gethash
-                  function-name
-                  *function-references*
-                  (let ((value (make-instance 'ir-value)))
-                    (push-node
-                     (make-node 'ir-construct
-                                 :form `(function ,function-name)
-                                 :outputs (list value)))
-                    value))))
+                (ir-convert-function function-name))
                (t
                 (error "Reference to the undefined function ~S."
                        function-name)))))))
@@ -260,11 +255,10 @@
          (let ((*predecessor* body-node)
                (*successor* (ir-node-successor body-node)))
            (ir-convert `(locally ,@forms) lexenv '*))
-         (push-node
-          (change-node-class ir-enclose 'ir-enclose
-                             :outputs (list value)
-                             :arguments arguments
-                             :body-initial-node body-node))
+         (change-class ir-enclose 'ir-enclose
+           :outputs (list value)
+           :arguments arguments
+           :body body-node)
          value)))
     (_ (error "Malformed function special form :~S."
               `(function ,@rest)))))
@@ -419,21 +413,20 @@
   (destructuring-bind (test then &optional else) rest
     (let* ((test-value (ir-convert test lexenv))
            (ir-if (make-instance 'ir-node))
-           (then-initial-node (make-ir-initial-and-ir-final-node ir-if))
-           (else-initial-node (make-ir-initial-and-ir-final-node ir-if))
+           (then-node (make-ir-initial-and-ir-final-node ir-if))
+           (else-node (make-ir-initial-and-ir-final-node ir-if))
            (outputs (make-outputs expected-values)))
-      (let ((*predecessor* then-initial-node)
-            (*successor* (ir-node-successor then-initial-node)))
+      (let ((*predecessor* then-node)
+            (*successor* (ir-node-successor then-node)))
         (ir-convert then lexenv expected-values))
-      (let ((*predecessor* else-initial-node)
-            (*successor* (ir-node-successor else-initial-node)))
+      (let ((*predecessor* else-node)
+            (*successor* (ir-node-successor else-node)))
         (ir-convert else lexenv expected-values))
-      (push-node
-       (change-node-class ir-if 'ir-if
-                          :inputs (list test-value)
-                          :outputs outputs
-                          :then-initial-node then-initial-node
-                          :else-initial-node else-initial-node))
+      (change-class ir-if 'ir-if
+        :inputs (list test-value)
+        :outputs outputs
+        :then then-node
+        :else else-node)
       (values-list outputs))))
 
 (defmethod ir-convert-compound-form
@@ -443,18 +436,23 @@
     (let* ((variable-name (second quoted-variable-name))
            (variable (make-instance 'ir-value))
            (ir-loop (make-instance 'ir-node))
-           (body-initial-node (make-ir-initial-and-ir-final-node ir-loop))
+           (body (make-ir-initial-and-ir-final-node ir-loop))
            (start-value (ir-convert start lexenv))
            (end-value (ir-convert end lexenv))
            (step-value (ir-convert step lexenv)))
       (ir-value-declare-type variable 'fixnum)
       (let ((lexenv (augment-lexenv lexenv (list (make-vrecord variable-name variable)) '()))
-            (*predecessor* body-initial-node)
-            (*successor* (ir-node-successor body-initial-node)))
+            (*predecessor* body)
+            (*successor* (ir-node-successor body)))
         (ir-convert body-form lexenv 0))
-      (push-node
-       (change-node-class ir-loop 'ir-loop
-                          :inputs (list start-value end-value step-value)
-                          :variable variable
-                          :body-initial-node body-initial-node))
+      (change-class ir-loop 'ir-loop
+        :inputs (list start-value end-value step-value)
+        :variable variable
+        :body body)
       (values))))
+
+(defmethod ir-convert-compound-form
+    ((_ (eql 'quote)) rest lexenv expected-values)
+  (unless (= 1 (length rest))
+    (error "Malformed QUOTE form: ~S" `',@rest))
+  (ir-convert-constant (first rest)))
