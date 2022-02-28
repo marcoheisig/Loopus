@@ -154,4 +154,7 @@
           (ir-specialize-value output (typo:universal-ntype)))))
 
 (defmethod ir-specialize-node ((ir-enclose ir-enclose))
-  (break "TODO"))
+  (let ((node (make-instance 'ir-node)))
+    (change-class node 'ir-enclose
+      :argument-values (mapcar #'ir-specialize-value (ir-enclose-argument-values ir-enclose))
+      :body (ir-specialize-block (ir-enclose-body ir-enclose) node))))
