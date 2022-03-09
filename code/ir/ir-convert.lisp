@@ -202,6 +202,7 @@
     ((_ (eql 'funcall)) rest lexenv expected-values)
   (let ((outputs (make-outputs expected-values)))
     (make-instance 'ir-call
+      :fnrecord (typo:ensure-fnrecord 'funcall)
       :inputs (mapcar (lambda (form) (ir-convert form lexenv)) rest)
       :outputs outputs)
     (values-list outputs)))

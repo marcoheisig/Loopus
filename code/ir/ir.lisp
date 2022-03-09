@@ -53,6 +53,11 @@
 (defgeneric ir-loop-variable (ir-loop))
 
 
+(defgeneric ir-call-p (object) (:method ((object t)) nil))
+
+(defgeneric ir-call-fnrecord (ir-call))
+
+
 (defgeneric ir-if-p (object) (:method ((object t)) nil))
 
 (defgeneric ir-if-then (ir-if))
@@ -243,14 +248,19 @@
     ((ir-loop ir-loop) slot-names &key &allow-other-keys)
   (ensure-ir-value-producer (ir-loop-variable ir-loop) ir-loop))
 
-;;; A call node has a first input that is a function, and further inputs
-;;; that serve as the arguments of that function.  It has some number of
-;;; outputs (whose number need not fit to the number of values produced by
-;;; the function).  When control is transferred to it, it binds each output
-;;; to the corresponding value obtained by invoking the function on the
-;;; arguments.  Outputs with no corresponding value are bound to NIL.
+;;; A call node is defined by an fnrecord that denotes a function, and
+;;; further inputs that serve as the arguments of that function.  It has
+;;; some number of outputs (whose number need not fit to the number of
+;;; values produced by the function).  When control is transferred to it,
+;;; it binds each output to the corresponding value obtained by invoking
+;;; the function on the arguments.  Outputs with no corresponding value are
+;;; bound to NIL.
 (defclass ir-call (ir-inner-node ir-node-with-inputs ir-node-with-outputs)
-  ())
+  ((%fnrecord
+    :initarg :fnrecord
+    :initform nil
+    :type (or typo:fnrecord null)
+    :reader ir-call-fnrecord)))
 
 ;;; An if node is an inner node with one input that is the generalized
 ;;; boolean to test, some number of outputs, a reference to the initial
@@ -362,6 +372,9 @@
     (values initial-node final-node)))
 
 (defmethod ir-loop-p ((ir-loop ir-loop))
+  t)
+
+(defmethod ir-call-p ((ir-call ir-call))
   t)
 
 (defmethod ir-if-p ((ir-if ir-if))

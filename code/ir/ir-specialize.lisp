@@ -80,7 +80,7 @@
                (etypecase wrapper
                  (ir-value (list wrapper))
                  (ir-node (ir-node-outputs wrapper))))
-             (wrap-function (function-designator wrappers mandatory optional rest)
+             (wrap-function (fnrecord wrappers mandatory optional rest)
                (let* ((inputs (loop for wrapper in wrappers
                                     for outputs = (wrapper-outputs wrapper)
                                     do (assert (not (null outputs)))
@@ -103,7 +103,8 @@
                          (the typo:ntype rest)) ; TODO
                    (incf index))
                  (make-instance 'ir-call
-                   :inputs (list* (wrap-constant function-designator) inputs)
+                   :fnrecord fnrecord
+                   :inputs inputs
                    :outputs
                    (loop for ntype across ntypes
                          collect
@@ -111,7 +112,7 @@
                            :derived-ntype ntype))))))
       (let* ((wrapper
                (typo:specialize
-                'funcall
+                (ir-call-fnrecord ir-call)
                 (mapcar #'find-specialized-value (ir-node-inputs ir-call))
                 :wrap-constant #'wrap-constant
                 :wrap-function #'wrap-function

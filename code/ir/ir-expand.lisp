@@ -37,8 +37,12 @@
                ,loop-end)))))))
 
 (defmethod ir-expand-node ((ir-call ir-call))
-  `(,(mapcar #'value-name (ir-node-outputs ir-call))
-    (funcall ,@(mapcar #'value-name (ir-node-inputs ir-call)))))
+  (let* ((fnrecord (ir-call-fnrecord ir-call))
+         (fn (if (typo:fnrecord-name fnrecord)
+                 `(function ,(typo:fnrecord-name fnrecord))
+                 (typo:fnrecord-function fnrecord))))
+    `(,(mapcar #'value-name (ir-node-outputs ir-call))
+      (funcall ,fn ,@(mapcar #'value-name (ir-node-inputs ir-call))))))
 
 (defmethod ir-expand-node ((ir-if ir-if))
   `(,(mapcar #'value-name (ir-node-outputs ir-if))

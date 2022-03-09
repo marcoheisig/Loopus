@@ -48,6 +48,10 @@
      #:ir-loop-body
      #:ir-loop-variable
 
+     #:ir-call
+     #:ir-call-p
+     #:ir-call-fnrecord
+
      #:ir-if
      #:ir-if-p
      #:ir-if-then
