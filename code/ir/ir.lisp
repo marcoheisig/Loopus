@@ -18,6 +18,12 @@
 
 (defvar *successor*)
 
+;;; A hash table, mapping from IR values to their copy.
+(defvar *ir-value-copies*)
+
+;;; A hash table, mapping from IR nodes to their copy.
+(defvar *ir-node-copies*)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Generic Functions
@@ -97,6 +103,12 @@
 (defgeneric insert-ir-node-after (ir-node future-predecessor))
 
 (defgeneric extract-ir-node (ir-node))
+
+(defgeneric copy-ir-value (context ir-value &optional ntype))
+
+(defgeneric copy-ir-node (context ir-node))
+
+(defgeneric copy-ir-block (context ir-node dominator))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -237,6 +249,7 @@
 (defclass ir-loop (ir-inner-node ir-node-with-inputs)
   ((%variable
     :initarg :variable
+    :initform (alexandria:required-argument :variable)
     :type ir-value
     :reader ir-loop-variable)
    (%body
@@ -289,8 +302,7 @@
 ;;; Construct nodes are used to handle constants, or references to
 ;;; functions or variables from outside of the loop nest.
 (defclass ir-construct (ir-inner-node ir-node-with-outputs)
-  ((%inputs :type null :initform '())
-   (%form
+  ((%form
     :initarg :form
     :initform (alexandria:required-argument :form)
     :reader ir-construct-form)))
@@ -438,3 +450,68 @@
     (setf (ir-node-%successor b) b)
     (setf (ir-node-%predecessor b) b)
     ir-node))
+
+(defmethod copy-ir-value (context (ir-value ir-value) &optional (ntype (typo:universal-ntype)))
+  (let* ((declared-type (ir-value-declared-type ir-value))
+         (declared-ntype (typo:type-specifier-ntype declared-type))
+         (derived-ntype (ir-value-derived-ntype ir-value)))
+    (values
+     (alexandria:ensure-gethash
+      ir-value
+      *ir-value-copies*
+      (make-instance 'ir-value
+        :declared-type declared-type
+        :derived-ntype
+        (typo:ntype-intersection
+         declared-ntype
+         (typo:ntype-intersection derived-ntype ntype)))))))
+
+(defmethod copy-ir-node (context (ir-loop ir-loop))
+  (let ((ir-node (make-instance 'ir-node)))
+    (change-class ir-node 'ir-loop
+      :inputs (mapcar (alexandria:curry #'copy-ir-value context) (ir-node-inputs ir-loop))
+      :variable (copy-ir-value context (ir-loop-variable ir-loop))
+      :body (copy-ir-block context (ir-loop-body ir-loop) ir-node))))
+
+(defmethod copy-ir-node (context (ir-call ir-call))
+  (with-accessors ((fnrecord ir-call-fnrecord)
+                   (inputs ir-node-inputs)
+                   (outputs ir-node-outputs)) ir-call
+    (make-instance 'ir-call
+      :fnrecord fnrecord
+      :inputs (mapcar (alexandria:curry #'copy-ir-value context) inputs)
+      :outputs
+      (if (eql outputs '*)
+          '*
+          (mapcar (alexandria:curry #'copy-ir-value context) outputs)))))
+
+(defmethod copy-ir-node (context (ir-if ir-if))
+  (let ((ir-node (make-instance 'ir-node)))
+    (change-class ir-node 'ir-if
+      :inputs (mapcar (alexandria:curry #'copy-ir-value context)
+                      (ir-node-inputs ir-if))
+      :outputs (mapcar (alexandria:curry #'copy-ir-value context)
+                       (ir-node-outputs ir-if))
+      :then (copy-ir-block context (ir-if-then ir-if) ir-node)
+      :else (copy-ir-block context (ir-if-else ir-if) ir-node))))
+
+(defmethod copy-ir-node (context (ir-construct ir-construct))
+  (make-instance 'ir-construct
+    :form (ir-construct-form ir-construct)
+    :outputs (mapcar (alexandria:curry #'copy-ir-value context)
+                     (ir-node-outputs ir-construct))))
+
+(defmethod copy-ir-node (context (ir-enclose ir-enclose))
+  (let ((ir-node (make-instance 'ir-node)))
+    (change-class ir-node 'ir-enclose
+      :body (copy-ir-block context (ir-enclose-body ir-enclose) ir-node)
+      :argument-values (mapcar (alexandria:curry #'copy-ir-value context)
+                               (ir-enclose-argument-values ir-enclose)))))
+
+(defmethod copy-ir-block (context (ir-node ir-node) dominator)
+  (multiple-value-bind (ir-initial-node ir-final-node)
+      (make-ir-initial-and-ir-final-node dominator)
+    (let ((*predecessor* ir-initial-node)
+          (*successor* ir-final-node))
+      (map-block-inner-nodes (alexandria:curry #'copy-ir-node context) ir-node))
+    ir-initial-node))

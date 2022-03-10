@@ -1,47 +1,32 @@
 (in-package #:loopus.ir)
 
-;;; A hash table, mapping from IR values to their specialized copy.
-(defvar *ir-specialized-value-table*)
-
 (defun ir-specialize (ir)
   "Returns a copy of IR in which the derived type of each value is refined
   based on the knowledge about its producer, and where each function call
   has been replaced by the most specific function that has identical
   semantics but for the (possibly refined) type of its inputs."
-  (let ((*ir-specialized-value-table* (make-hash-table :test #'eq)))
+  (let ((*ir-value-copies* (make-hash-table :test #'eq)))
     (ir-specialize-block ir nil)))
 
-(defgeneric ir-specialize-value (ir-value &optional ntype))
-
-(defgeneric ir-specialize-block (ir-node parent))
+(defgeneric ir-specialize-block (ir-node dominator))
 
 (defgeneric ir-specialize-node (ir-node))
 
-(defmethod ir-specialize-value ((ir-value ir-value) &optional (ntype (typo:universal-ntype)))
-  (when (gethash ir-value *ir-specialized-value-table*)
-    (error "Attempt to specialize an already specialized value."))
-  (let* ((declared-type (ir-value-declared-type ir-value))
-         (declared-ntype (typo:type-specifier-ntype declared-type)))
-    (setf (gethash ir-value *ir-specialized-value-table*)
-          (make-instance 'ir-value
-            :declared-type declared-type
-            :derived-ntype (typo:ntype-intersection declared-ntype ntype)))))
-
 (defun find-specialized-value (ir-value)
-  (multiple-value-bind (clone present-p)
-      (gethash ir-value *ir-specialized-value-table*)
+  (multiple-value-bind (copy present-p)
+      (gethash ir-value *ir-value-copies*)
     (if (not present-p)
         (error "Reference to IR value that hasn't been specialized upon yet: ~S"
                ir-value)
-        clone)))
+        copy)))
 
-(defmethod ir-specialize-block (initial-node parent)
-  (multiple-value-bind (initial-node-copy final-node-copy)
-      (make-ir-initial-and-ir-final-node parent)
-    (let ((*predecessor* initial-node-copy)
-          (*successor* final-node-copy))
-      (map-block-inner-nodes #'ir-specialize-node initial-node))
-    initial-node-copy))
+(defmethod ir-specialize-block (ir-node dominator)
+  (multiple-value-bind (initial-node final-node)
+      (make-ir-initial-and-ir-final-node dominator)
+    (let ((*predecessor* initial-node)
+          (*successor* final-node))
+      (map-block-inner-nodes #'ir-specialize-node ir-node))
+    initial-node))
 
 (defmethod ir-specialize-node ((ir-loop ir-loop))
   (destructuring-bind (start end step)
@@ -49,7 +34,7 @@
     (let* ((start (find-specialized-value start))
            (step (find-specialized-value step))
            (end (find-specialized-value end))
-           (variable (ir-specialize-value (ir-loop-variable ir-loop)))
+           (variable (copy-ir-value nil (ir-loop-variable ir-loop)))
            (node (make-instance 'ir-node))
            (body (ir-specialize-block (ir-loop-body ir-loop) node)))
       (change-class node 'ir-loop
@@ -124,7 +109,7 @@
              (outputs (wrapper-outputs wrapper)))
         (loop for ir-value in (ir-node-outputs ir-call)
               for output in outputs do
-                (setf (gethash ir-value *ir-specialized-value-table*)
+                (setf (gethash ir-value *ir-value-copies*)
                       output))))))
 
 (defmethod ir-specialize-node ((ir-if ir-if))
@@ -140,7 +125,8 @@
       :outputs
       (loop for output in (ir-node-outputs ir-if)
             collect
-            (ir-specialize-value
+            (copy-ir-value
+             nil
              output
              (typo:ntype-union
               (if (null then-outputs)
@@ -156,10 +142,11 @@
     :outputs
     (loop for output in (ir-node-outputs ir-construct)
           collect
-          (ir-specialize-value output (typo:universal-ntype)))))
+          (copy-ir-value nil output))))
 
 (defmethod ir-specialize-node ((ir-enclose ir-enclose))
   (let ((node (make-instance 'ir-node)))
     (change-class node 'ir-enclose
-      :argument-values (mapcar #'ir-specialize-value (ir-enclose-argument-values ir-enclose))
+      :argument-values (mapcar (alexandria:curry #'copy-ir-value nil)
+                               (ir-enclose-argument-values ir-enclose))
       :body (ir-specialize-block (ir-enclose-body ir-enclose) node))))
