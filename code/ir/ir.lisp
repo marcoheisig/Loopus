@@ -172,21 +172,22 @@
     (ensure-ir-value-user input ir-node-with-inputs)))
 
 (defclass ir-node-with-outputs (ir-node)
-  (;; The list of values that are produced by this node.  One peculiarity
-   ;; should be mentioned here: If the node is the final node of a
-   ;; sequence, i.e., if its successor is NIL, its outputs are meaningless.
-   ;; It may return any number of values in an unspecified way.
+  (;; The list of values that are produced by this node, or, if the node
+   ;; occurs as the final node of a block in a context where the number of
+   ;; expected values is not known, the symbol *.
    (%outputs
     :initarg :outputs
     :initform (alexandria:required-argument :outputs)
-    :type list
+    :type (or list (eql *))
     :reader ir-node-outputs)))
 
 (defmethod shared-initialize :after
     ((ir-node-with-outputs ir-node-with-outputs) slot-names &key &allow-other-keys)
   (declare (ignore slot-names))
-  (dolist (output (ir-node-outputs ir-node-with-outputs))
-    (ensure-ir-value-producer output ir-node-with-outputs)))
+  (let ((outputs (ir-node-outputs ir-node-with-outputs)))
+    (unless (eql outputs '*)
+      (dolist (output outputs)
+        (ensure-ir-value-producer output ir-node-with-outputs)))))
 
 (defclass ir-node-with-successor (ir-node)
   (;; The IR node that this node transfers control to.

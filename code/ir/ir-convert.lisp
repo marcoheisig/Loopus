@@ -78,7 +78,7 @@
 
 (defun make-outputs (expected-values)
   (if (eq expected-values '*)
-      '()
+      '*
        (loop repeat expected-values collect (make-instance 'ir-value))))
 
 (defun ir-convert (form lexenv &optional (expected-values 1))

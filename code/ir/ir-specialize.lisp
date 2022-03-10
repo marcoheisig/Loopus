@@ -58,7 +58,8 @@
         :body body))))
 
 (defmethod ir-specialize-node ((ir-call ir-call))
-  (let ((max-outputs (length (ir-node-outputs ir-call))))
+  (let* ((outputs (ir-node-outputs ir-call))
+         (max-typed-outputs (if (eql outputs '*) 0 (length outputs))))
     ;; Wrappers can be either IR nodes or IR values.
     (labels ((wrapper-nth-value-ntype (n wrapper)
                (etypecase wrapper
@@ -83,11 +84,12 @@
              (wrap-function (fnrecord wrappers mandatory optional rest)
                (let* ((inputs (loop for wrapper in wrappers
                                     for outputs = (wrapper-outputs wrapper)
-                                    do (assert (not (null outputs)))
+                                    do (assert (consp outputs))
                                     collect (first outputs)))
                       (n-mandatory (length mandatory))
                       (n-optional (length optional))
-                      (n-outputs (if (not rest) (+ n-mandatory n-optional) max-outputs))
+                      (n-provided (if rest (1- multiple-values-limit) (+ n-mandatory n-optional)))
+                      (n-outputs (min n-provided max-typed-outputs))
                       (ntypes (make-array n-outputs))
                       (index 0))
                  (loop for ntype in mandatory while (< index n-outputs) do
@@ -106,10 +108,12 @@
                    :fnrecord fnrecord
                    :inputs inputs
                    :outputs
-                   (loop for ntype across ntypes
-                         collect
-                         (make-instance 'ir-value
-                           :derived-ntype ntype))))))
+                   (if (eql outputs '*)
+                       '*
+                        (loop for ntype across ntypes
+                              collect
+                              (make-instance 'ir-value
+                                :derived-ntype ntype)))))))
       (let* ((wrapper
                (typo:specialize
                 (ir-call-fnrecord ir-call)
@@ -120,8 +124,8 @@
              (outputs (wrapper-outputs wrapper)))
         (loop for ir-value in (ir-node-outputs ir-call)
               for output in outputs do
-          (setf (gethash ir-value *ir-specialized-value-table*)
-                output))))))
+                (setf (gethash ir-value *ir-specialized-value-table*)
+                      output))))))
 
 (defmethod ir-specialize-node ((ir-if ir-if))
   (let* ((node (make-instance 'ir-node))

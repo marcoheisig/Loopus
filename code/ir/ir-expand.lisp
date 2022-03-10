@@ -40,8 +40,9 @@
   (let* ((fnrecord (ir-call-fnrecord ir-call))
          (fn (if (typo:fnrecord-name fnrecord)
                  `(function ,(typo:fnrecord-name fnrecord))
-                 (typo:fnrecord-function fnrecord))))
-    `(,(mapcar #'value-name (ir-node-outputs ir-call))
+                 (typo:fnrecord-function fnrecord)))
+         (outputs (ir-node-outputs ir-call)))
+    `(,(if (eql outputs '*) '() (mapcar #'value-name outputs))
       (funcall ,fn ,@(mapcar #'value-name (ir-node-inputs ir-call))))))
 
 (defmethod ir-expand-node ((ir-if ir-if))
