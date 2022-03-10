@@ -2,17 +2,20 @@
 
 (defvar *ir-node-liveness*)
 
+(defgeneric ir-node-alive-p (ir-node))
+
 (defun ir-remove-dead-code (ir)
   "Returns a copy of IR in which all calls to pure functions whose outputs
   are never used have been removed."
   (let ((*ir-node-liveness* (make-hash-table :test #'eq))
-        (*ir-value-copies* (make-hash-table :test #'eq))
-        (*ir-node-copies* (make-hash-table :test #'eq)))
+        (*ir-value-copies* (make-hash-table :test #'eq)))
     (copy-ir-block 'remove-dead-code ir nil)))
 
-(defgeneric ir-node-alive-p (ir-node))
-
-;;; Liveness
+(defmethod copy-ir-node :around
+    ((context (eql 'remove-dead-code))
+     (ir-node ir-node))
+  (when (ir-node-alive-p ir-node)
+    (call-next-method)))
 
 (defmethod ir-node-alive-p :around ((ir-node ir-node))
   (values
@@ -54,11 +57,3 @@
   ;; An if node is alive if either of its branches is alive.
   (or (ir-node-alive-p (ir-if-then ir-if))
       (ir-node-alive-p (ir-if-else ir-if))))
-
-;;; Copying of Live Nodes
-
-(defmethod copy-ir-node :around
-    ((context (eql 'remove-dead-code))
-     (ir-node ir-node))
-  (when (ir-node-alive-p ir-node)
-    (call-next-method)))

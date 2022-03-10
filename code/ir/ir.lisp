@@ -21,9 +21,6 @@
 ;;; A hash table, mapping from IR values to their copy.
 (defvar *ir-value-copies*)
 
-;;; A hash table, mapping from IR nodes to their copy.
-(defvar *ir-node-copies*)
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Generic Functions
