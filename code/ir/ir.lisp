@@ -37,6 +37,8 @@
 
 (defgeneric ir-node-predecessor (ir-node))
 
+(defgeneric ir-node-depth (ir-node))
+
 
 (defgeneric ir-initial-node (ir-node))
 
@@ -348,6 +350,14 @@
 
 (defmethod ir-node-outputs ((ir-node ir-node))
   '())
+
+(defmethod ir-node-depth ((ir-node ir-node))
+  (ir-node-depth (ir-initial-node ir-node)))
+
+(defmethod ir-node-depth ((ir-node-with-dominator ir-node-with-dominator))
+  (do ((dominator (ir-node-dominator ir-node-with-dominator) (ir-node-dominator dominator))
+       (depth 0 (1+ depth)))
+      ((null dominator) depth)))
 
 (defmethod ir-initial-node ((ir-initial-node ir-initial-node))
   ir-initial-node)

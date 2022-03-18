@@ -36,6 +36,7 @@
      #:ir-node-outputs
      #:ir-node-successor
      #:ir-node-predecessor
+     #:ir-node-depth
 
      #:ir-initial-node
      #:ir-initial-node-p
