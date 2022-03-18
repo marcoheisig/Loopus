@@ -14,9 +14,13 @@
 ;;;
 ;;; Special Variables
 
-(defvar *predecessor*)
+;; A list of all surrounding final nodes, sorted by dominance, starting
+;; with the innermost surrounding block.
+(defvar *blocks* '())
 
-(defvar *successor*)
+(define-symbol-macro *final-node* (first *blocks*))
+
+(define-symbol-macro *initial-node* (ir-initial-node *final-node*))
 
 ;;; A hash table, mapping from IR values to their copy.
 (defvar *ir-value-copies*)
@@ -36,8 +40,6 @@
 (defgeneric ir-node-successor (ir-node))
 
 (defgeneric ir-node-predecessor (ir-node))
-
-(defgeneric ir-node-depth (ir-node))
 
 
 (defgeneric ir-initial-node (ir-node))
@@ -204,7 +206,7 @@
   (;; The IR node that this node transfers control to.
    (%successor
     :initarg :successor
-    :initform *successor*
+    :initform *final-node*
     :type ir-node
     :reader ir-node-successor
     :writer (setf ir-node-%successor))))
@@ -213,7 +215,7 @@
   (;; The IR node that this node receives control form.
    (%predecessor
     :initarg :predecessor
-    :initform *predecessor*
+    :initform (ir-node-predecessor *final-node*)
     :type ir-node
     :reader ir-node-predecessor
     :writer (setf ir-node-%predecessor))))
@@ -237,8 +239,7 @@
 
 (defmethod shared-initialize :after
     ((inner-node ir-inner-node) slot-names &key &allow-other-keys)
-  (insert-ir-node-after inner-node *predecessor*)
-  (setf *predecessor* inner-node))
+  (insert-ir-node-before inner-node *final-node*))
 
 ;;; A loop node is an inner node with three inputs (start, end, and
 ;;; step), zero outputs, and a control flow node that marks the beginning
@@ -350,14 +351,6 @@
 
 (defmethod ir-node-outputs ((ir-node ir-node))
   '())
-
-(defmethod ir-node-depth ((ir-node ir-node))
-  (ir-node-depth (ir-initial-node ir-node)))
-
-(defmethod ir-node-depth ((ir-node-with-dominator ir-node-with-dominator))
-  (do ((dominator (ir-node-dominator ir-node-with-dominator) (ir-node-dominator dominator))
-       (depth 0 (1+ depth)))
-      ((null dominator) depth)))
 
 (defmethod ir-initial-node ((ir-initial-node ir-initial-node))
   ir-initial-node)
@@ -518,7 +511,6 @@
 (defmethod copy-ir-block (context (ir-node ir-node) dominator)
   (multiple-value-bind (ir-initial-node ir-final-node)
       (make-ir-initial-and-ir-final-node dominator)
-    (let ((*predecessor* ir-initial-node)
-          (*successor* ir-final-node))
+    (let ((*blocks* (cons ir-final-node *blocks*)))
       (map-block-inner-nodes (alexandria:curry #'copy-ir-node context) ir-node))
     ir-initial-node))
