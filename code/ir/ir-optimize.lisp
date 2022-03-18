@@ -4,7 +4,6 @@
   (ir-vectorize
    (ir-unroll-loops
     (ir-split-loops
-     (ir-eliminate-common-subexpressions
-      (ir-hoist-loop-invariant-code
-       (ir-remove-dead-code
-        (ir-specialize ir))))))))
+     (ir-remove-dead-code
+      (ir-eliminate-common-subexpressions
+       (ir-specialize ir)))))))

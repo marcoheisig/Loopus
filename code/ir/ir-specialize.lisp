@@ -6,11 +6,7 @@
   has been replaced by the most specific function that has identical
   semantics but for the (possibly refined) type of its inputs."
   (let ((*ir-value-copies* (make-hash-table :test #'eq)))
-    (ir-specialize-block ir nil)))
-
-(defgeneric ir-specialize-block (ir-node dominator))
-
-(defgeneric ir-specialize-node (ir-node))
+    (copy-ir-block 'ir-specialize ir nil)))
 
 (defun find-specialized-value (ir-value)
   (multiple-value-bind (copy present-p)
@@ -20,29 +16,9 @@
                ir-value)
         copy)))
 
-(defmethod ir-specialize-block (ir-node dominator)
-  (multiple-value-bind (initial-node final-node)
-      (make-ir-initial-and-ir-final-node dominator)
-    (let ((*predecessor* initial-node)
-          (*successor* final-node))
-      (map-block-inner-nodes #'ir-specialize-node ir-node))
-    initial-node))
-
-(defmethod ir-specialize-node ((ir-loop ir-loop))
-  (destructuring-bind (start end step)
-      (ir-node-inputs ir-loop)
-    (let* ((start (find-specialized-value start))
-           (step (find-specialized-value step))
-           (end (find-specialized-value end))
-           (variable (copy-ir-value nil (ir-loop-variable ir-loop)))
-           (node (make-instance 'ir-node))
-           (body (ir-specialize-block (ir-loop-body ir-loop) node)))
-      (change-class node 'ir-loop
-        :variable variable
-        :inputs (list start end step)
-        :body body))))
-
-(defmethod ir-specialize-node ((ir-call ir-call))
+(defmethod copy-ir-node
+    ((context (eql 'ir-specialize))
+     (ir-call ir-call))
   (let* ((outputs (ir-node-outputs ir-call))
          (max-typed-outputs (if (eql outputs '*) 0 (length outputs))))
     ;; Wrappers can be either IR nodes or IR values.
@@ -112,10 +88,13 @@
                 (setf (gethash ir-value *ir-value-copies*)
                       output))))))
 
-(defmethod ir-specialize-node ((ir-if ir-if))
+(defmethod copy-ir-node
+    ((context (eql 'ir-specialize))
+     (ir-if ir-if))
   (let* ((node (make-instance 'ir-node))
-         (then (ir-specialize-block (ir-if-then ir-if) node))
-         (else (ir-specialize-block (ir-if-else ir-if) node))
+         (then (copy-ir-block context (ir-if-then ir-if) node))
+         (else (copy-ir-block context (ir-if-else ir-if) node))
+         (node-outputs (ir-node-outputs ir-if))
          (then-outputs (ir-node-outputs (ir-node-predecessor (ir-final-node then))))
          (else-outputs (ir-node-outputs (ir-node-predecessor (ir-final-node then)))))
     (change-class node 'ir-if
@@ -123,30 +102,17 @@
       :else else
       :inputs (list (find-specialized-value (first (ir-node-inputs ir-if))))
       :outputs
-      (loop for output in (ir-node-outputs ir-if)
-            collect
-            (copy-ir-value
-             nil
-             output
-             (typo:ntype-union
-              (if (null then-outputs)
-                  (typo:universal-ntype)
-                  (ir-value-derived-ntype (pop then-outputs)))
-              (if (null else-outputs)
-                  (typo:universal-ntype)
-                  (ir-value-derived-ntype (pop else-outputs)))))))))
-
-(defmethod ir-specialize-node ((ir-construct ir-construct))
-  (make-instance 'ir-construct
-    :form (ir-construct-form ir-construct)
-    :outputs
-    (loop for output in (ir-node-outputs ir-construct)
-          collect
-          (copy-ir-value nil output))))
-
-(defmethod ir-specialize-node ((ir-enclose ir-enclose))
-  (let ((node (make-instance 'ir-node)))
-    (change-class node 'ir-enclose
-      :argument-values (mapcar (alexandria:curry #'copy-ir-value nil)
-                               (ir-enclose-argument-values ir-enclose))
-      :body (ir-specialize-block (ir-enclose-body ir-enclose) node))))
+      (if (eql node-outputs '*)
+          '*
+           (loop for output in node-outputs
+                 collect
+                 (copy-ir-value
+                  nil
+                  output
+                  (typo:ntype-union
+                   (if (null then-outputs)
+                       (typo:universal-ntype)
+                       (ir-value-derived-ntype (pop then-outputs)))
+                   (if (null else-outputs)
+                       (typo:universal-ntype)
+                       (ir-value-derived-ntype (pop else-outputs))))))))))
