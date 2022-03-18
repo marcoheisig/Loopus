@@ -156,8 +156,11 @@
                                 when (eq key 'type)
                                   collect value)))))
             (t
-             (error "Reference to undefined variable ~S."
-                    variable-name)))))))
+             (let ((value (make-instance 'ir-value)))
+               (make-instance 'ir-construct
+                 :form variable-name
+                 :outputs (list value))
+               value)))))))
 
 (defun map-declaration-specifiers (function declarations)
   (dolist (declaration declarations)
@@ -232,8 +235,11 @@
                (:function
                 (ir-convert-function function-name))
                (t
-                (error "Reference to the undefined function ~S."
-                       function-name)))))))
+                (let ((value (make-instance 'ir-value :declared-type 'function)))
+                  (make-instance 'ir-construct
+                    :form `(function ,function-name)
+                    :outputs (list value))
+                  value)))))))
     ((list (list* 'lambda (list* lambda-list) body))
      (when (intersection lambda-list lambda-list-keywords)
        (error "Lambda list keywords aren't supported, yet."))
