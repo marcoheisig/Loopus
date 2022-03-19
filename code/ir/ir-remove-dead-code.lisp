@@ -50,6 +50,7 @@
   (ir-node-alive-p (ir-loop-body ir-loop)))
 
 (defmethod ir-node-alive-p ((ir-call ir-call))
+  ;; A call is alive it is not pure.
   (or (not (typo:fnrecord-purep (ir-call-fnrecord ir-call)))
       (call-next-method)))
 

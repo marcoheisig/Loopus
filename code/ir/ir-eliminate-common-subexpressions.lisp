@@ -53,7 +53,7 @@
                     (loop for input in inputs
                           for other-input in (ir-node-inputs node)
                           always (eq (copy-ir-value context input) other-input)))
-           (replace-node-outputs ir-call node)
+           (replace-node-outputs ir-call (ir-node-outputs node))
            (return-from copy-ir-node node)))
        *initial-node*))
     (call-next-method)))
@@ -67,23 +67,10 @@
      (when (and (ir-construct-p node)
                 (equal (ir-construct-form node)
                        (ir-construct-form ir-construct)))
-       (replace-node-outputs ir-construct node)
+       (replace-node-outputs ir-construct (ir-node-outputs node))
        (return-from copy-ir-node node)))
    *initial-node*)
   (call-next-method))
-
-(defun replace-node-outputs (node replacement)
-  (let* ((node-outputs (ir-node-outputs node))
-         (replacement-outputs (ir-node-outputs replacement)))
-    (unless (and (eql node-outputs '*)
-                 (eql replacement-outputs '*))
-      (loop for node-output in node-outputs
-            for replacement-output in replacement-outputs do
-              (assert (typo:ntype=
-                       (ir-value-derived-ntype node-output)
-                       (ir-value-derived-ntype replacement-output)))
-              (setf (gethash node-output *ir-value-copies*)
-                    replacement-output)))))
 
 (defmethod ir-value-depth ((ir-value ir-value))
   (let ((producer (ir-value-producer ir-value)))

@@ -94,7 +94,7 @@
 
 (defgeneric ir-value-declared-type (ir-value))
 
-(defgeneric ir-value-derived-type (ir-value))
+(defgeneric ir-value-derived-ntype (ir-value))
 
 (defgeneric ir-value-declare-type (ir-value type-specifier))
 
@@ -136,6 +136,12 @@
    (%users
     :initform '()
     :reader ir-value-users)))
+
+(defmethod print-object ((ir-value ir-value) stream)
+  (print-unreadable-object (ir-value stream :type t)
+    (let ((t1 (ir-value-declared-type ir-value))
+          (t2 (typo:ntype-type-specifier (ir-value-derived-ntype ir-value))))
+      (format stream "~S" (if (subtypep t2 t1) t2 t1)))))
 
 (defun ensure-ir-value-producer (ir-value producer)
   (if (slot-boundp ir-value '%producer)
@@ -478,10 +484,12 @@
          (typo:ntype-intersection derived-ntype ntype)))))))
 
 (defmethod copy-ir-node (context (ir-loop ir-loop))
-  (let ((ir-node (make-instance 'ir-node)))
+  (let* ((variable (copy-ir-value context (ir-loop-variable ir-loop)))
+         (ir-node (make-instance 'ir-node-with-outputs
+                    :outputs (list variable))))
     (change-class ir-node 'ir-loop
       :inputs (mapcar (alexandria:curry #'copy-ir-value context) (ir-node-inputs ir-loop))
-      :variable (copy-ir-value context (ir-loop-variable ir-loop))
+      :variable variable
       :body (copy-ir-block context (ir-loop-body ir-loop) ir-node))))
 
 (defmethod copy-ir-node (context (ir-call ir-call))
@@ -525,3 +533,12 @@
     (let ((*blocks* (cons ir-final-node *blocks*)))
       (map-block-inner-nodes (alexandria:curry #'copy-ir-node context) ir-node))
     ir-initial-node))
+
+(defun replace-node-outputs (node replacement-outputs)
+  (let* ((node-outputs (ir-node-outputs node)))
+    (unless (and (eql node-outputs '*)
+                 (eql replacement-outputs '*))
+      (loop for node-output in node-outputs
+            for replacement-output in replacement-outputs do
+              (setf (gethash node-output *ir-value-copies*)
+                    replacement-output)))))

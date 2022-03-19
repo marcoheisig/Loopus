@@ -419,7 +419,7 @@
   (destructuring-bind (quoted-variable-name start end step body-form) rest
     (let* ((variable-name (second quoted-variable-name))
            (variable (make-instance 'ir-value))
-           (ir-loop (make-instance 'ir-node))
+           (ir-loop (make-instance 'ir-node-with-outputs :outputs (list variable)))
            (body (make-ir-initial-and-ir-final-node ir-loop))
            (start-value (ir-convert start lexenv))
            (end-value (ir-convert end lexenv))

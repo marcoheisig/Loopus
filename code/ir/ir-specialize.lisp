@@ -20,9 +20,13 @@
     ((context (eql 'ir-specialize))
      (ir-call ir-call))
   (let* ((outputs (ir-node-outputs ir-call))
-         (max-typed-outputs (if (eql outputs '*) 0 (length outputs))))
+         (n-outputs (if (eql outputs '*) '* (length (ir-node-outputs ir-call))))
+         (max-typed-outputs (if (integerp n-outputs) n-outputs (1- multiple-values-limit))))
     ;; Wrappers can be either IR nodes or IR values.
-    (labels ((wrapper-nth-value-ntype (n wrapper)
+    (labels ((make-value (ntype)
+               (make-instance 'ir-value
+                 :derived-ntype ntype))
+             (wrapper-nth-value-ntype (n wrapper)
                (etypecase wrapper
                  (ir-value (if (zerop n)
                                (ir-value-derived-ntype wrapper)
@@ -33,60 +37,55 @@
                         (ir-value-derived-ntype (nth n outputs))
                         (typo:type-specifier-ntype 'null))))))
              (wrap-constant (constant)
-               (let ((ir-value (make-instance 'ir-value :derived-ntype (typo:ntype-of constant))))
+               (let ((ir-value (make-value (typo:ntype-of constant))))
                  (make-instance 'ir-construct
                    :form `',constant
                    :outputs (list ir-value))
                  ir-value))
-             (wrapper-outputs (wrapper)
-               (etypecase wrapper
-                 (ir-value (list wrapper))
-                 (ir-node (ir-node-outputs wrapper))))
+             (wrapper-outputs (wrapper expected-values)
+               (if (eql expected-values '*)
+                   '()
+                   (let ((outputs
+                           (etypecase wrapper
+                             (ir-value (list wrapper))
+                             (ir-node (ir-node-outputs wrapper)))))
+                     (if (<= expected-values (length outputs))
+                         (subseq outputs 0 expected-values)
+                         (let ((default (make-value (typo:ntype-of nil))))
+                           (make-instance 'ir-construct
+                             :form 'nil
+                             :outputs (list default))
+                           (replace (make-list expected-values :initial-element default)
+                                    outputs))))))
              (wrap-function (fnrecord wrappers mandatory optional rest)
-               (let* ((inputs (loop for wrapper in wrappers
-                                    for outputs = (wrapper-outputs wrapper)
-                                    do (assert (consp outputs))
-                                    collect (first outputs)))
-                      (n-mandatory (length mandatory))
-                      (n-optional (length optional))
-                      (n-provided (if rest (1- multiple-values-limit) (+ n-mandatory n-optional)))
-                      (n-outputs (min n-provided max-typed-outputs))
-                      (ntypes (make-array n-outputs))
-                      (index 0))
-                 (loop for ntype in mandatory while (< index n-outputs) do
-                   (setf (svref ntypes index)
-                         ntype)
-                   (incf index))
-                 (loop for ntype in optional while (< index n-outputs) do
-                   (setf (svref ntypes index)
-                         (typo:ntype-union ntype (typo:type-specifier-ntype 'null)))
-                   (incf index))
-                 (loop while (< index n-outputs) do
-                   (setf (svref ntypes index)
-                         (the typo:ntype rest)) ; TODO
-                   (incf index))
-                 (make-instance 'ir-call
-                   :fnrecord fnrecord
-                   :inputs inputs
-                   :outputs
-                   (if (eql outputs '*)
-                       '*
-                        (loop for ntype across ntypes
-                              collect
-                              (make-instance 'ir-value
-                                :derived-ntype ntype)))))))
-      (let* ((wrapper
-               (typo:specialize
-                (ir-call-fnrecord ir-call)
-                (mapcar #'find-specialized-value (ir-node-inputs ir-call))
-                :wrap-constant #'wrap-constant
-                :wrap-function #'wrap-function
-                :wrapper-nth-value-ntype #'wrapper-nth-value-ntype))
-             (outputs (wrapper-outputs wrapper)))
-        (loop for ir-value in (ir-node-outputs ir-call)
-              for output in outputs do
-                (setf (gethash ir-value *ir-value-copies*)
-                      output))))))
+               (make-instance 'ir-call
+                 :fnrecord fnrecord
+                 :inputs
+                 (loop for wrapper in wrappers
+                       collect (first (wrapper-outputs wrapper 1)))
+                 :outputs
+                 (let ((index 0))
+                   (flet ()
+                     (append
+                      (loop for ntype in mandatory
+                            do (incf index)
+                            collect (make-value ntype))
+                      (loop for ntype in optional
+                            do (incf index)
+                            collect (make-value (typo:ntype-union ntype (typo:type-specifier-ntype 'null))))
+                      (unless (eql outputs '*)
+                        (loop while (< index max-typed-outputs)
+                              for ntype = (typo:ntype-union rest (typo:type-specifier-ntype 'null))
+                              do (incf index)
+                              collect (make-value ntype)))))))))
+      (let ((wrapper
+              (typo:specialize
+               (ir-call-fnrecord ir-call)
+               (mapcar #'find-specialized-value (ir-node-inputs ir-call))
+               :wrap-constant #'wrap-constant
+               :wrap-function #'wrap-function
+               :wrapper-nth-value-ntype #'wrapper-nth-value-ntype)))
+        (replace-node-outputs ir-call (wrapper-outputs wrapper n-outputs))))))
 
 (defmethod copy-ir-node
     ((context (eql 'ir-specialize))
