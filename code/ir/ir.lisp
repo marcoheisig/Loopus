@@ -41,6 +41,8 @@
 
 (defgeneric ir-node-predecessor (ir-node))
 
+(defgeneric ir-node-values-type (ir-node))
+
 
 (defgeneric ir-initial-node (ir-node))
 
@@ -401,6 +403,15 @@
 
 (defmethod ir-value-p ((ir-value ir-value))
   t)
+
+(defmethod ir-node-values-type ((ir-node ir-node))
+  '(values))
+
+(defmethod ir-node-values-type ((ir-node-with-outputs ir-node-with-outputs))
+  (let ((outputs (ir-node-outputs ir-node-with-outputs)))
+    (if (eql outputs '*)
+        '(values)
+         `(values ,@(mapcar #'ir-value-declared-type outputs)))))
 
 (defmethod ir-value-derived-type (ir-value)
   (typo:ntype-type-specifier

@@ -43,22 +43,26 @@
                  (typo:fnrecord-function fnrecord)))
          (outputs (ir-node-outputs ir-call)))
     `(,(if (eql outputs '*) '() (mapcar #'value-name outputs))
-      (funcall ,fn ,@(mapcar #'value-name (ir-node-inputs ir-call))))))
+      (the ,(ir-node-values-type ir-call)
+           (funcall ,fn ,@(mapcar #'value-name (ir-node-inputs ir-call)))))))
 
 (defmethod ir-expand-node ((ir-if ir-if))
   `(,(mapcar #'value-name (ir-node-outputs ir-if))
-    (if ,(value-name (first (ir-node-inputs ir-if)))
-        ,(ir-expand-node (ir-if-then ir-if))
-        ,(ir-expand-node (ir-if-else ir-if)))))
+    (the ,(ir-node-values-type ir-if)
+         (if ,(value-name (first (ir-node-inputs ir-if)))
+             ,(ir-expand-node (ir-if-then ir-if))
+             ,(ir-expand-node (ir-if-else ir-if))))))
 
 (defmethod ir-expand-node ((ir-construct ir-construct))
   `(,(mapcar #'value-name (ir-node-outputs ir-construct))
-    ,(ir-construct-form ir-construct)))
+    (the ,(ir-node-values-type ir-construct)
+         ,(ir-construct-form ir-construct))))
 
 (defmethod ir-expand-node ((ir-enclose ir-enclose))
   `(,(mapcar #'value-name (ir-node-outputs ir-enclose))
-    (lambda ,(mapcar #'value-name (ir-enclose-argument-values ir-enclose))
-      ,(ir-expand-node (ir-enclose-body ir-enclose)))))
+    (the ,(ir-node-values-type ir-enclose)
+         (lambda ,(mapcar #'value-name (ir-enclose-argument-values ir-enclose))
+           ,(ir-expand-node (ir-enclose-body ir-enclose))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

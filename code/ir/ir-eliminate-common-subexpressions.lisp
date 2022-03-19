@@ -83,7 +83,7 @@
                        (ir-value-derived-ntype node-output)
                        (ir-value-derived-ntype replacement-output)))
               (setf (gethash node-output *ir-value-copies*)
-                     replacement-output)))))
+                    replacement-output)))))
 
 (defmethod ir-value-depth ((ir-value ir-value))
   (let ((producer (ir-value-producer ir-value)))
