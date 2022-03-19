@@ -5,10 +5,18 @@
 ;;; of Common Lisp, except that it doesn't actually compute a result but
 ;;; assemble IR nodes.
 
+;;; Hash tables for caching IR constructs.
+(defvar *ir-convert-constants*)
+(defvar *ir-convert-variables*)
+(defvar *ir-convert-function-names*)
+
 (defun ir-convert-in-environment (form env &optional (expected-values '*))
   (multiple-value-bind (initial-node final-node)
       (make-ir-initial-and-ir-final-node nil)
-    (let ((*blocks* (cons final-node *blocks*)))
+    (let ((*ir-convert-constants* (make-hash-table :test #'eql))
+          (*ir-convert-variables* (make-hash-table :test #'eq))
+          (*ir-convert-function-names* (make-hash-table :test #'equal))
+          (*blocks* (cons final-node *blocks*)))
       (ir-convert
        ;; TODO It would be better not to use macroexpand-all, but to expand
        ;; things ourselves.  Otherwise we risk that an implementation expands
@@ -66,25 +74,45 @@
 ;;; Conversion of Constants
 
 (defun ir-convert-constant (constant)
-  (let ((value (make-instance 'ir-value :declared-type `(eql ,constant))))
-    (make-instance 'ir-construct
-      :form `',constant
-      :outputs (list value))
-    value))
+  (values
+   (alexandria:ensure-gethash
+    constant
+    *ir-convert-constants*
+    (let* ((*blocks* (last *blocks*))
+           (value (make-instance 'ir-value :declared-type `(eql ,constant))))
+      (make-instance 'ir-construct
+        :form `',constant
+        :outputs (list value))
+      value))))
 
-(defun ir-convert-variable (variable-name declared-type)
-  (let ((value (make-instance 'ir-value :declared-type declared-type)))
-    (make-instance 'ir-construct
-      :form variable-name
-      :outputs (list value))
-    value))
+(defun ir-convert-variable (variable-name &optional (declared-type t))
+  (values
+   (alexandria:ensure-gethash
+    variable-name
+    *ir-convert-variables*
+    (let* ((*blocks* (last *blocks*))
+           (value (make-instance 'ir-value :declared-type declared-type)))
+      (make-instance 'ir-construct
+        :form variable-name
+        :outputs (list value))
+      value))))
 
 (defun ir-convert-function (function-name)
-  (let ((value (make-instance 'ir-value :declared-type `(eql ,function-name))))
-    (make-instance 'ir-construct
-      :form `(function ,function-name)
-      :outputs (list value))
-    value))
+  (values
+   (alexandria:ensure-gethash
+    function-name
+    *ir-convert-function-names*
+    (let* ((*blocks* (last *blocks*))
+           (value (make-instance 'ir-value
+                    :declared-type 'function
+                    :derived-ntype
+                    (if (fboundp function-name)
+                        (typo:ntype-of (fdefinition function-name))
+                        (typo:type-specifier-ntype  'function)))))
+      (make-instance 'ir-construct
+        :form `(function ,function-name)
+        :outputs (list value))
+      value))))
 
 ;;; Conversion of Symbols
 
@@ -112,11 +140,7 @@
                                 when (eq key 'type)
                                   collect value)))))
             (t
-             (let ((value (make-instance 'ir-value)))
-               (make-instance 'ir-construct
-                 :form variable-name
-                 :outputs (list value))
-               value)))))))
+             (ir-convert-variable variable-name)))))))
 
 (defun map-declaration-specifiers (function declarations)
   (dolist (declaration declarations)
