@@ -1,6 +1,7 @@
 (in-package #:loopus.ir)
 
 (pushnew 'typo.common-lisp:integer+ sb-simd-vectorizer::*add-operators*)
+(pushnew 'typo.common-lisp:integer- sb-simd-vectorizer::*sub-operators*)
 (pushnew 'typo.common-lisp:integer* sb-simd-vectorizer::*mul-operators*)
 
 (defclass ir-simd-loop (ir-loop)
@@ -22,7 +23,9 @@
                         (typo:fnrecord-name (ir-call-fnrecord node))
                         nil)
                        (member (typo:fnrecord-name (ir-call-fnrecord node))
-                               '(typo.common-lisp:integer+ typo.common-lisp:integer*))))
+                               '(typo.common-lisp:integer+
+                                 typo.common-lisp:integer-
+                                 typo.common-lisp:integer*))))
            (return-from copy-ir-node (call-next-method))))
        (ir-loop-body ir-loop)))
     (let* ((variable (copy-ir-value context (ir-loop-variable ir-loop)))
