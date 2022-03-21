@@ -38,13 +38,17 @@
 
 (defmethod ir-expand-node ((ir-call ir-call))
   (let* ((fnrecord (ir-call-fnrecord ir-call))
-         (fn (if (typo:fnrecord-name fnrecord)
-                 `(function ,(typo:fnrecord-name fnrecord))
-                 (typo:fnrecord-function fnrecord)))
          (outputs (ir-node-outputs ir-call)))
     `(,(if (eql outputs '*) '() (mapcar #'value-name outputs))
       (the ,(ir-node-values-type ir-call)
-           (funcall ,fn ,@(mapcar #'value-name (ir-node-inputs ir-call)))))))
+           ,(let ((name (typo:fnrecord-name fnrecord))
+                  (arguments (mapcar #'value-name (ir-node-inputs ir-call))))
+              (cond ((null name)
+                     `(funcall ,(typo:fnrecord-function fnrecord) ,@arguments))
+                    ((symbolp name)
+                     `(,name ,@arguments))
+                    (t
+                     `(funcall (function ,name) ,@arguments))))))))
 
 (defmethod ir-expand-node ((ir-if ir-if))
   `(,(mapcar #'value-name (ir-node-outputs ir-if))
