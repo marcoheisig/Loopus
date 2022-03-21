@@ -5,8 +5,8 @@
 
   :depends-on
   ("alexandria"
-   "closer-mop"
    "bordeaux-threads"
+   "closer-mop"
    "trivia"
    "trivial-cltl2"
    "trivial-macroexpand-all"

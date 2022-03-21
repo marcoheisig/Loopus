@@ -9,10 +9,10 @@
   are never used have been removed."
   (let ((*ir-node-liveness* (make-hash-table :test #'eq))
         (*ir-value-copies* (make-hash-table :test #'eq)))
-    (copy-ir-block 'remove-dead-code ir nil)))
+    (copy-ir-block 'ir-remove-dead-code ir nil)))
 
 (defmethod copy-ir-node :around
-    ((context (eql 'remove-dead-code))
+    ((context (eql 'ir-remove-dead-code))
      (ir-node ir-node))
   (when (ir-node-alive-p ir-node)
     (call-next-method)))
