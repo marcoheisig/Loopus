@@ -477,11 +477,11 @@
       ir-value
       *ir-value-copies*
       (make-instance 'ir-value
-        :declared-type declared-type
-        :derived-ntype
-        (typo:ntype-intersection
-         declared-ntype
-         (typo:ntype-intersection derived-ntype ntype)))))))
+                     :declared-type declared-type
+                     :derived-ntype
+                     (typo:ntype-intersection
+                      declared-ntype
+                      (typo:ntype-intersection derived-ntype ntype)))))))
 
 (defmethod copy-ir-node (context (ir-loop ir-loop))
   (let* ((variable (copy-ir-value context (ir-loop-variable ir-loop)))

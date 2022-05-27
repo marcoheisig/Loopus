@@ -10,7 +10,8 @@
    "trivia"
    "trivial-cltl2"
    "trivial-macroexpand-all"
-   "typo")
+   "typo"
+   "cl-isl")
 
   :serial t
   :components
@@ -28,6 +29,9 @@
      (:file "ir-remove-dead-code")
      (:file "ir-eliminate-common-subexpressions")
      (:file "ir-split-loops")
+     (:file "ir-isl-optimize")
+     (:file "input-loopus-ir")
+     (:file "output-loopus-ir")
      (:file "ir-unroll-loops")
      (:file "ir-vectorize")
      (:file "ir-optimize")
