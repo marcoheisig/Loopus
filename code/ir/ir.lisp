@@ -61,6 +61,8 @@
 
 (defgeneric ir-loop-variable (ir-loop))
 
+(defgeneric ir-loop-direction (ir-loop))
+
 
 (defgeneric ir-call-p (object) (:method ((object t)) nil))
 
@@ -247,7 +249,10 @@
 
 (defmethod shared-initialize :after
     ((inner-node ir-inner-node) slot-names &key &allow-other-keys)
-  (insert-ir-node-before inner-node *final-node*))
+  (when (or (eql slot-names t)
+            (and (member '%predecessor slot-names)
+                 (member '%successor slot-names)))
+    (insert-ir-node-before inner-node *final-node*)))
 
 ;;; A loop node is an inner node with three inputs (start, end, and
 ;;; step), zero outputs, and a control flow node that marks the beginning
@@ -264,7 +269,12 @@
     :initarg :body
     :initform (alexandria:required-argument :body)
     :type ir-initial-node
-    :reader ir-loop-body)))
+    :reader ir-loop-body)
+   (%direction
+    :initarg :direction
+    :initform :unknown
+    :type (member :ascending :descending :unknown)
+    :reader ir-loop-direction)))
 
 (defmethod shared-initialize :after
     ((ir-loop ir-loop) slot-names &key &allow-other-keys)
@@ -490,6 +500,7 @@
     (change-class ir-node 'ir-loop
       :inputs (mapcar (alexandria:curry #'copy-ir-value context) (ir-node-inputs ir-loop))
       :variable variable
+      :direction (ir-loop-direction ir-loop)
       :body (copy-ir-block context (ir-loop-body ir-loop) ir-node))))
 
 (defmethod copy-ir-node (context (ir-call ir-call))
