@@ -22,19 +22,31 @@
               collect (ir-expand-node node)))))
 
 (defmethod ir-expand-node ((ir-loop ir-loop))
-  (let ((index (value-name (ir-loop-variable ir-loop))))
-    (destructuring-bind (start end step) (ir-node-inputs ir-loop)
-      (alexandria:with-gensyms (loop-start loop-end)
-        `(()
-          (let ((,index ,(value-name start)))
-            (declare (fixnum ,index))
-            (tagbody ,loop-start
-               (when (= ,index ,(value-name end))
-                 (go ,loop-end))
-               ,(ir-expand-node (ir-loop-body ir-loop))
-               (incf ,index ,(value-name step))
-               (go ,loop-start)
-               ,loop-end)))))))
+  (with-accessors ((inputs ir-node-inputs)
+                   (variable ir-loop-variable)
+                   (directoin ir-loop-direction)
+                   (body ir-loop-body)) ir-loop
+    (destructuring-bind (start end step) inputs
+      (let ((variable (value-name variable))
+            (start (value-name start))
+            (end (value-name end))
+            (step (value-name step)))
+        (ecase (ir-loop-direction ir-loop)
+          (:ascending
+           `(()
+             (loop for ,variable fixnum from ,start below ,end by ,step do
+                   ,(ir-expand-node (ir-loop-body ir-loop)))))
+          (:descending
+           `(()
+             (loop for ,variable fixnum from ,start above ,end by (abs ,step) do
+                   ,(ir-expand-node (ir-loop-body ir-loop)))))
+          (:unknown
+           `(()
+             (loop for ,variable fixnum = ,start then (+ ,variable ,step)
+                   while (if (plusp ,step)
+                             (< ,variable ,end)
+                             (> ,variable ,end))
+                   do ,(ir-expand-node (ir-loop-body ir-loop))))))))))
 
 (defmethod ir-expand-node ((ir-call ir-call))
   (let* ((fnrecord (ir-call-fnrecord ir-call))
