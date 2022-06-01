@@ -3,7 +3,7 @@
 (in-package :loopus.ir)
 
 (defparameter node nil)
-(defparameter *ir-value-copies* nil) ;;(make-hash-table))
+(defparameter *ir-value-copies* nil)
 
 (declaim (optimize (speed 0) (space 0) (debug 3) (safety 3)))
 
@@ -12,12 +12,25 @@
 
 (defparameter *current-depth* nil)
 
+(defparameter *position-to-loopusvariable* nil)
+
+
 (defun ins2 (&rest rest)
   (break "Inspect ~a" rest))
 (defun ins (e)
   (break "Inspect ~a" e))
 
+;; Takes a cl-isl node (for instance a loop node), and create a loopus nodes for it
+;; Will call the function below
+(defgeneric execute-node (node))
 
+;; Takes a cl-isl expression (for instance "1+2"), and create loopus nodes for it
+;; Won't call the function above
+(defgeneric execute-expr (expr))
+
+;; Entry point of the program. Takes a cl-isl ast, call execute-node on it, and returns a loopus ast
+;; Sequence of instructions are "block" in the cl-isl ast, and execute-node on a block calls recursively
+;; itself on every statement of the block. Hence a single call to execute-node in this function
 (defun my-main (node dominator)
   (unless dominator (setf *values* '()))
   (unless dominator (setf *depth-loop-variables* '()))
@@ -28,10 +41,7 @@
       (execute-node node))
     ir-initial-node))
 
-(defgeneric execute-node (node))
-(defgeneric execute-expr (expr))
-
-
+;; todo refactor this
 (defun is-member (v l)
   (if l
       (if (string= v (car (first l)))
@@ -39,25 +49,25 @@
           (is-member v (cdr l)))
       nil))
 
-(defmethod execute-expr ((expr isl::id-expr))
-  (let* ((v (isl::id-expr-get-id expr))
-         (v (isl::identifier-name v)))
-    (format t "Creation of a value ~a" v)
-    (if nil ;;(is-member v *values*)
-        (progn
-          (is-member v *values*)
-          )
-        (let ((answer (make-instance 'ir-value
-                                     ;;:declared-type v;;v ;;??
-                                     ;;:derived-ntype nil;;v ;;??
-                                     )))
+(defun create-loop-var (v)
+  (let ((v (if (symbolp v) v (isl::identifier-name (isl::id-expr-get-id v)))))
+    (if (is-member v *values*)
+        (is-member v *values*)
+        (let ((answer (make-instance 'ir-value)))
           (setf *values* (cons (cons v answer) *values*))
           answer))))
 
+;;;;;;;;;;;;;;;
+;; Execute-expr
+;;;;;;;;;;;;;;;
+
+;;todo one file per thing?
+
+
+;; Creation of integer
 (defmethod execute-expr ((expr isl::int-expr))
   (let* ((v (isl::int-expr-get-value expr))
          (v (isl::value-object v)))
-    (format t "Creation of an integer value ~a" v)
     (let* ((construct (make-instance 'ir-node))
            (answer (make-instance 'ir-value
                                   :declared-type `(eql ,v)
@@ -66,6 +76,50 @@
                     :form `',v
                     :outputs (list answer))
       answer)))
+
+;; Creation of a variable
+(defmethod execute-expr ((expr isl::id-expr))
+  (let* ((v (isl::id-expr-get-id expr))
+         (v (isl::identifier-name v)))
+    ;; Simple loop variable
+    (if (position v possible-loop-variables)
+        (create-loop-var v)
+        ;; If it's a free variable we modify the value we use, otherwise it'll be v
+        (let* ((answer (gethash
+                        (gethash (symbol-name v) *free-variable-to-index*)
+                        *position-to-loopusvariable*))
+               (value (if answer answer v)))
+          ;; Otherwise it's a constant value
+          (if nil ;;(is-member v *values*) - todo
+              (progn
+                (is-member v *values*)
+                )
+              (let* ((construct (make-instance 'ir-node))
+                     (answer (make-instance 'ir-value
+                                            ;;:declared-type v;;v ;;??
+                                            ;;:derived-ntype nil;;v ;;??
+                                            )))
+                (change-class construct 'ir-construct
+                              :form value
+                              :outputs (list answer))
+                (setf *values* (cons (cons v answer) *values*))
+                answer))))))
+
+;; Todo the type?
+;; For a function call generate the appropriate ir-call
+(defmethod execute-expr ((expr isl::ast-expr))
+  (let* ((answer (make-instance 'ir-value)))
+    (make-instance 'ir-call
+                   :fnrecord (make-instance 'typo:fnrecord :name (isl:op-expr-get-operator expr) :function #'+) ;;todo
+                   :inputs  (mapcar #'execute-expr (isl:op-expr-get-list-args expr))
+                   :outputs (list answer))
+    answer))
+
+
+;;;;;;;;;;;;;;;
+;; Execute-node
+;;;;;;;;;;;;;;;
+
 
 (defmethod execute-node ((node isl::for-node))
   (let* ((variable (isl::for-node-get-iterator node))
@@ -77,7 +131,7 @@
          (increment (isl::for-node-get-inc node))
          (body (isl::for-node-get-body node)))
     ;; Generation of the nodes
-    (let* ((variable (execute-expr variable))
+    (let* ((variable (create-loop-var variable))
            (start (execute-expr start-value))
            (end (execute-expr end-value))
            (step (execute-expr increment))
@@ -85,7 +139,13 @@
       (change-class loop-node 'ir-loop
                     :variable variable
                     :inputs (list start end step)
-                    :body (make-instance 'ir-node))
+                    :direction (if (eql (type-of increment) 'isl::int-expr)
+                                   (let ((value (isl::value-object (isl::int-expr-get-value increment))))
+                                     (if (> value 0) :ascending
+                                         (if (< value 0) :descending
+                                             :unknown)))
+                                   :unknown)
+                    :body (make-instance 'ir-initial-node :dominator loop-node))
       (setf (slot-value variable '%producer) loop-node)
       (push variable *depth-loop-variables*)
       (setf (gethash node *ir-value-copies*) variable)
@@ -168,9 +228,7 @@
                         (position
                          (isl::identifier-name
                           (isl::id-expr-get-id c))
-                         (mapcar #'read-from-string
-                                 (list "C0" "C1" "C2" "C3" "C4" "C5" "C6" "C7" "C8" "C9"))
-                        ))
+                         possible-loop-variables))
                       (cdr args)))
          (old-code (let* ((cp *depth-loop-variables*)
                           (_ (setf *depth-loop-variables*

@@ -9,6 +9,7 @@
 (defun ins (e)
   (break "Inspect ~a" e))
 
+
 ;; To create points on the domain side
 ;; 1 global time
 ;; 1 for each variable
@@ -26,6 +27,29 @@
 
 ;; The space of schedule (domain -> domain)
 (defparameter *space-map-schedule* (isl:create-space-map 0 *size-domain* *size-domain*))
+
+;; How many free variable we can have
+(defparameter *size-free-parameters* 5)
+
+;; A hack. List of all loop variables
+(defparameter possible-loop-variables (mapcar #'read-from-string (list "C0" "C1" "C2" "C3" "C4" "C5" "C6" "C7" "C8" "C9")))
+
+;; Add parameters from free variables
+;; Position can be found with the hashtable
+(defparameter *free-variable-to-index* (make-hash-table :test 'equal))
+(loop for i below *size-free-parameters* do
+  (let ((id (isl::make-gensym-identifier 'free-variable)))
+    (setf (gethash (symbol-name (isl:identifier-name id)) *free-variable-to-index*) i)
+    (setf *space-domain* (isl::space-add-param-id *space-domain* id))
+    (setf *space-range* (isl::space-add-param-id *space-range* id))
+    (setf *space-map-domain-range* (isl::space-add-param-id *space-map-domain-range* id))
+    (setf *space-map-schedule* (isl::space-add-param-id *space-map-schedule* id))))
+
+;; hashtable of ir-construct-node to position of the identifier
+(defparameter *construct-to-identifier* nil) ;; ir-construct-node to position (integer)
+(defparameter position-next-free-variable nil) ;; at first it's *size-domain*. Gets incf each time
+
+
 
 ;; Definition of variables that will hold the set/map of domain/read/write/schedule
 ;; defparameter
@@ -73,42 +97,82 @@
 ;; We start from universe { [*, *] }
 ;; Add the first constraint to have { [*counter-domain*, *] }
 ;; Add constraint for each loop-var to have { [*counter*, loop-var] : start <= loop-var < end }
+;; The function that does what is described just above is create-new-point-domain, 2 s-expr below
+
+;; Add a constant value to the constraint. Can be a known value or a variable
+(defun add-constant-constraint (constraint value i delta)
+  ;; 3 cases:
+  ;; + integer -> just add the value
+  ;; + loop variable -> *loop-variables* has the first value the most inner loop so we need to reverse it
+  ;; + free variable -> pick from *construct-to-identifier*
+
+  ;; Delta is to fix the 1off error because constraint are <=
+  ;; It's either 0 when start <= loop-var. Or -1 when loop-var < end
+  ;; When it's integer we just add it. Otherwise we add it as a constant in the inequality
+  (if (integerp value)
+      ;; integer
+      (isl::inequality-constraint-set-constant constraint (isl:value (+ delta (* i value))))
+      (let ((idx-loop-variable (position value (reverse *loop-variables*))))
+        (if idx-loop-variable
+            ;; loop variable
+            (isl::inequality-constraint-set-coefficient
+             (isl::inequality-constraint-set-constant constraint (isl:value delta)) ; Add the -1 constant in the inequality
+             :dim-set (1+ idx-loop-variable)
+             (isl:value i))
+            (let ((idx-free-variable
+                    ;; position-next-free-variable is incremented only when not found
+                    (alexandria:ensure-gethash
+                     (ir-construct-form (ir-value-producer value))
+                     *construct-to-identifier*
+                     (incf position-next-free-variable))))
+              (if idx-free-variable
+                  ;; free variable
+                    (isl::inequality-constraint-set-coefficient
+                     (isl::inequality-constraint-set-constant constraint (isl:value delta))
+                     :dim-param idx-free-variable
+                     (isl:value i))
+                  (break "can't happen")))))))
 
 (defparameter *counter-domain* nil)
 (defun create-new-point-domain ()
-  ;; The structure we want to have: just below. Start from universe, and create each part
-  ;; [*counter-domain* only once, i for i in loop-var, -1 for the rest]
+  ;; The structure we want to have: see commentary above. Start from universe, and create each part
+  ;; [*counter-domain* only once, i for i in loop-var, -1 for the rest] -- One s-expr for each part
+  ;; *counter-domain only once part
   (let* ((result (isl:basic-set-universe *space-domain*))
          (*space-domain* (isl:local-space-from-space *space-domain*))
+         ;;(result (add-all-loop-identifier result))
          ;; [*, *] - universe
          (bot (isl::make-equality-constraint *space-domain*))
          (bot (isl::equality-constraint-set-constant bot (isl:value *counter-domain*)))
          (bot (isl::equality-constraint-set-coefficient bot :dim-set 0 (isl:value -1)))
          (_ (setf result (isl:basic-set-add-constraint result bot))))
     ;; Now we have [*counter-domain*, *]
+    ;; Part for each loop var
     (loop for p below *current-depth* do
       (let* ((bounds (nth p (reverse *loop-bounds*)))
-             ;; the variable at the very left is the outer loop, so it's the good order
+             ;; The variable at the very left is the outer loop, so it's the good order
              (start-value (first bounds))
              (end-value (second bounds))
              (bot (isl::make-inequality-constraint *space-domain*))
-             (bot (isl::inequality-constraint-set-constant bot (isl:value (- 0 start-value))))
+             (bot (add-constant-constraint bot start-value -1 0))
              (bot (isl::inequality-constraint-set-coefficient bot :dim-set (1+ p) (isl:value 1)))
              (_ (setf result (isl:basic-set-add-constraint result bot)))
              ;; Creation of [*, i] : start <= i
              (bot (isl::make-inequality-constraint *space-domain*))
-             (bot (isl::inequality-constraint-set-constant bot (isl:value (- end-value 1))))
+             (bot (add-constant-constraint bot end-value 1 -1))
              (bot (isl::inequality-constraint-set-coefficient bot :dim-set (1+ p) (isl:value -1)))
              ;; Creation of [*, i] : start <= i < end
+             ;; The "<" comes from the -1 in add-constant-constraint. We actually create i <= end - 1
              ;; End of this iteration: [*counter-domain*, i for one more variable] : start <= i < end
              (_ (setf result (isl:basic-set-add-constraint result bot))))))
     ;; Now we have [*counter-domain*, i for i in loop-var, *]
+    ;; Part to fill the rest
     (loop for p from (1+ *current-depth*) below *size-domain* do
       (let* ((bot (isl::make-equality-constraint *space-domain*))
              (bot (isl::equality-constraint-set-constant bot (isl:value -1)))
              (bot (isl::equality-constraint-set-coefficient bot :dim-set p (isl:value -1)))
              (_ (setf result (isl:basic-set-add-constraint result bot))))))
-    ;; Now we have [*counter-domain* only once, i for i in loop-var, -1 for the rest]
+    ;; Now we have [*counter-domain* only once, i for i in loop-var, -1 for the rest]. What we wanted
     (isl:basic-set-union-set result)))
 
 
@@ -161,6 +225,8 @@
 ;; SCHEDULE
 ;;;;;;;;;;;;;;;
 
+;; I'm a clown and it's just (identity domain domain) ?
+
 (defun create-map-schedule (&rest args)
   (let* ((result (isl:basic-map-universe *space-map-schedule*))
          (*space-map-schedule* (isl:local-space-from-space *space-map-schedule*))
@@ -170,30 +236,33 @@
          (result (isl:basic-map-add-constraint result bot))
          (bot (isl::make-equality-constraint *space-map-schedule*))
          (bot (isl::equality-constraint-set-constant bot (isl:value *counter-domain*)))
-         (bot (isl::equality-constraint-set-coefficient bot :dim-out (- *size-domain* 1) (isl:value -1)))
+         (bot (isl::equality-constraint-set-coefficient bot :dim-out 0 (isl:value -1)))
          (result (isl:basic-map-add-constraint result bot)))
     ;; Loop for each variable
     (loop for idx from 0 below *current-depth* do
       ;; Now, for each loop variable, we map it to the correct left part
       (let* ((bot (isl::make-equality-constraint *space-map-schedule*))
              (pos-variable (is-loop-variable (nth idx (first args))))
-             (bot (isl::equality-constraint-set-coefficient bot :dim-in
-                                                      ;(- (- *size-domain* 1)
-                                                         (+ 1 pos-variable)
-                                                      ;   )
-                                                      (isl:value -1)))
-             (bot (isl::equality-constraint-set-coefficient bot :dim-out
-                                                            (- (- *size-domain* 2) idx)
-                                                            (isl:value 1)))
+             (bot (isl::equality-constraint-set-coefficient
+                   bot
+                   :dim-in (+ 1 pos-variable)
+                   (isl:value -1)))
+             (bot (isl::equality-constraint-set-coefficient
+                   bot
+                   :dim-out (1+ idx)
+                   (isl:value 1)))
              (_ (setf result (isl:basic-map-add-constraint result bot))))))
     ;; Loop for the rest
     (loop for idx from *current-depth* below *size-domain* do
       (let* ((bot (isl::make-equality-constraint *space-map-schedule*))
-             (bot (isl::equality-constraint-set-coefficient bot :dim-in
-                                                            idx (isl:value -1)))
-             (bot (isl::equality-constraint-set-coefficient bot :dim-out
-                                                            (- (- *size-domain* 1) idx)
-                                                            (isl:value 1)))
+             (bot (isl::equality-constraint-set-coefficient
+                   bot
+                   :dim-in idx
+                   (isl:value -1)))
+             (bot (isl::equality-constraint-set-coefficient
+                   bot
+                   :dim-out idx
+                   (isl:value 1)))
              (_ (setf result (isl:basic-map-add-constraint result bot))))))
     (isl:basic-map-union-map result)))
 
@@ -232,29 +301,35 @@
       (push-set *set-domain* current-timestamp)
       ;; Add to *map-read* and/or *map-write*
       ;;todo refactor
-      (let* ((new-map (apply #'create-new-point-range
-                               (if is-aref
-                                   ;; If it's an aref, just gives what follows aref
-                                   ;; (aref a b c d e) -> args will be (a b c d e)
-                                   (cons (first args) (reverse (cdr args)))
-                                   ;; If it's an setf, it's ((setf aref) value a b c d e)
-                                   ;; instead of (aref a b c d e) like above
-                                   ;; So (cdr args) is (a b c d e)
-                                   (cons (first (cdr args)) (reverse (cddr args)))
-                                   )))
-             (new-map (isl:basic-map-union-map new-map))
-             (new-map (isl:union-map-intersect-domain new-map current-timestamp))
-             )
-        (when is-aref (push-map *map-read* new-map))
-        (when is-setf (push-map *map-write* new-map)))
+      (let* ((what-is-read/wrote-in-order
+               ;; todo comment why we do this
+               (if is-aref
+                   ;; If it's an aref, just gives what follows aref
+                   ;; (aref a b c d e) -> args will be (a b c d e)
+                   (cons (first args) (reverse (cdr args)))
+                   ;; If it's an setf, it's ((setf aref) value a b c d e)
+                   ;; instead of (aref a b c d e) like above
+                   ;; So (cdr args) is (a b c d e)
+                   (cons (first (cdr args)) (reverse (cddr args)))
+                   ))
+             (map-of-read/write (apply #'create-new-point-range what-is-read/wrote-in-order))
+             (map-of-read/write (isl:basic-map-union-map map-of-read/write))
+             (map-of-read/write (isl:union-map-intersect-domain map-of-read/write current-timestamp)))
+        (when is-aref (push-map *map-read* map-of-read/write))
+        (when is-setf (push-map *map-write* map-of-read/write)))
       ;; Add to *map-schedule*
       (push-map *map-schedule*
                 (isl:union-map-intersect-domain
                  (create-map-schedule *loop-variables*)
                  current-timestamp))
-      (my-incf *counter-domain*)
-      )
-    ))
+      (my-incf *counter-domain*))))
+
+(defun parse-bound (value)
+  (if (typo.ntype:eql-ntype-p (ir-value-derived-ntype value))
+      ;(typo:eql-ntype-object
+      (second (ir-value-derived-type value))
+      value)) ;;todo
+;;      (ir-construct-form (ir-value-producer value))))
 
 ;; Todo handle lexical scope
 (defmethod update-node ((node ir-loop))
@@ -269,118 +344,10 @@
   (incf *current-depth*)
   ;; Loop bounds
   (let* ((inputs (ir-node-inputs node))
-         (start (second (ir-value-declared-type (first inputs))))
-         (end (second (ir-value-declared-type (second inputs)))))
+         (start (parse-bound (first inputs)))
+         (end (parse-bound (second inputs))))
+    ;;(ins end)
     ;; todo step too ?
     (push (list start end) *loop-bounds*))
   ;; Recursive call
   (map-block-inner-nodes #'update-node (ir-loop-body node)))
-
-
-
-
-(when nil
-
-(print "--")
-;;(setf *print-case* :downcase)
-;;Loops over 1D, 2D, 3D, 4D rectangle.
-;;Loop over triangle.
-;;Loop over tetrahedra.
-;;Loop with 'funny holes' (branches that depend on the indices).
-;;Space filling curves
-
-(let* ((sym (gensym "array"))
-       (myloop
-         (ir-convert-in-environment
-
-
-
-          ;;[i, j] -> i*N + j
-
-          #+or(loopus:for (k 0 10)
-             (setf (aref ,sym k)
-                   ;;k
-                   ;;(+ 1 2)
-                   ;;(+ 1 k)
-                   (+ (* k 3) k)
-                   ))
-
-          #+or(loopus:for (i 0 4)
-             (+ (aref ,sym i) 1))
-
-
-          ;; créer i = 1+i
-
-          ;;(loopus:for (k 0 4)
-          `(loopus:for (i 0 5)
-               (loopus:for (j 0 5)
-                 (setf (aref ,sym i j) (+ (aref ,sym i j) i)))) ;;(* 10 j) (* 100 i)))))
-          nil)))
-
-
-            #+or(loopus:for (j 0 5)
-                  ;;(setf (aref C i j) 0)
-                  (loopus:for (i 0 5)
-                    (setf (aref C i j) (+
-                                        (aref C i j)
-                                        (* (aref A i k)
-                                           (aref B k j))))))
-
-  (map-block-inner-nodes #'update-node myloop)
-
-  (print *set-domain*)
-  (print *map-read*)
-  (print *map-write*)
-  (print *map-schedule*)
-
-
-  (let ((node (isl::get-new-result *set-domain* *map-read* *map-write* *map-schedule*))
-        (start-node (isl::get-initial-result  *set-domain* *map-read* *map-write* *map-schedule*)))
-    (isl:pretty-print-node start-node)
-    (isl:pretty-print-node node)
-    (print start-node)
-    (print node)
-
-    (print "end")
-    (eval `(defparameter ,sym (make-array '(5 5) :initial-element 0)))
-    (eval `(print ,sym))
-    (eval (print (ir-expand (my-main node nil))))
-    (eval `(print ,sym))))
-
-
-
-
-
-
-
-
-#|
-
-
-Domain := [n] -> {
-[i1, i2, 0] : 0 <= i1 <= n and 0 <= i2 <= n;
-[i1, i2, 2] : 0 <= i1 <= n and 0 <= i2 <= n;
-};
-
-Read := [n] -> {
-[i1, i2, 0] -> [1, i1, i2]
-} * Domain;
-
-Write := [n] -> {
-[i1, i2, 2] -> [1, i1, i2]
-} * Domain;
-
-Schedule := [n] -> {
-[i1, i2, 2] -> [i1, i2, 2];
-[i1, i2, 0] -> [i1, i2, 0]
-};
-
--> good ast
-
-same but [0, i1, i2] instead of [i1, i2, 0]
--> bad ast
-
-|#
-)
-
-
