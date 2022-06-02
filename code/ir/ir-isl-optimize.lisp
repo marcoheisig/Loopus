@@ -33,8 +33,8 @@
     (setf *position-to-loopusvariable* (make-hash-table))
     (maphash (lambda (key value) (setf (gethash value *position-to-loopusvariable*) key)) *construct-to-identifier*)
     ;; End of setf special parameters
-    (let ((init-node (isl::get-initial-result *set-domain* *map-read* *map-write* *map-schedule*))
-          (node (isl::get-new-result *set-domain* *map-read* *map-write* *map-schedule*)))
+    (let ((init-node (isl::generate-debug-ast *set-domain* *map-read* *map-write* *map-schedule*))
+          (node (isl:generate-optimized-ast *set-domain* *map-read* *map-write* *map-schedule*)))
       (isl:pretty-print-node init-node)
       (isl:pretty-print-node node)
       (print "ok")

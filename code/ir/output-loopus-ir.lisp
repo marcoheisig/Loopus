@@ -66,8 +66,8 @@
 
 ;; Creation of integer
 (defmethod execute-expr ((expr isl::int-expr))
-  (let* ((v (isl::int-expr-get-value expr))
-         (v (isl::value-object v)))
+  (let* ((v (isl:int-expr-get-value expr))
+         (v (isl:value-object v)))
     (let* ((construct (make-instance 'ir-node))
            (answer (make-instance 'ir-value
                                   :declared-type `(eql ,v)
@@ -78,9 +78,9 @@
       answer)))
 
 ;; Creation of a variable
-(defmethod execute-expr ((expr isl::id-expr))
-  (let* ((v (isl::id-expr-get-id expr))
-         (v (isl::identifier-name v)))
+(defmethod execute-expr ((expr isl:id-expr))
+  (let* ((v (isl:id-expr-get-id expr))
+         (v (isl:identifier-name v)))
     ;; Simple loop variable
     (if (position v possible-loop-variables)
         (create-loop-var v)
