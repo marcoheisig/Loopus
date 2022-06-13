@@ -120,6 +120,14 @@
 ;; Execute-node
 ;;;;;;;;;;;;;;;
 
+(defun plus-expr (expr1 expr2)
+  (let* ((answer (make-instance 'ir-value))
+         (_ (make-instance 'ir-call
+                        :fnrecord (make-instance 'typo:fnrecord :name '+ :function #'+)
+                        :inputs (list expr1 expr2)
+                        :outputs (list answer))))
+    ;;(setf *values* (cons (cons v answer) *values*))
+    answer))
 
 (defmethod execute-node ((node isl::for-node))
   (let* ((variable (isl::for-node-get-iterator node))
@@ -127,14 +135,16 @@
          (end-condition (isl::for-node-get-cond node))
          ;;(_ (assert (cl-isl::%isl-ast-expr-is-equal variable (cl-isl::%isl-ast-expr-get-op-arg end-condition 0))))
          ;; todo assert
-         (end-value (isl::op-expr-get-op-arg end-condition 1))
          (increment (isl::for-node-get-inc node))
+         (end-value (isl::op-expr-get-op-arg end-condition 1))
          (body (isl::for-node-get-body node)))
     ;; Generation of the nodes
     (let* ((variable (create-loop-var variable))
            (start (execute-expr start-value))
-           (end (execute-expr end-value))
+           (end-minus-step (execute-expr end-value))
            (step (execute-expr increment))
+           (end (plus-expr end-minus-step step))
+           ;; We need to add step to end, because loopus generate code with "< end" constraint, and cl-isl has "<= end"
            (loop-node (make-instance 'ir-node)))
       (change-class loop-node 'ir-loop
                     :variable variable

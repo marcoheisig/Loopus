@@ -57,7 +57,7 @@
       (loopus:for (i 2 9)
         (loopus:for (j 1 i)
           (setf (aref 2d j i) (+ i j))))
-      (print 2d))))
+      (print 2d)
       #+or(loopus:for (i 5 10)
         (loopus:for (j 5 10)
           ;;(acc (aref 2d i j))))
@@ -81,7 +81,7 @@
         (loopus:for (j 0 9)
           (loopus:for (k 0 10)
             (setf (aref 3d i j k) (+ i j k)))))
-      (loopus:for (i 0 10)
+      #+or(loopus:for (i 0 10)
         (loopus:for (j 0 10)
           (loopus:for (k 0 10)
             (acc (aref 3d i j k)))))
@@ -89,7 +89,7 @@
       (print accumulator))
 
     ;; Matrix multiplication
-    (progn
+    #+or(progn
       ;; Init
       #+or(loopus:for (i 0 5)
         (loopus:for (j 0 5)
