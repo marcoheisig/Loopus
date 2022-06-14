@@ -188,7 +188,20 @@
   (ins ast)
   ;; If it's a call, we do a recursive call to ourself :-)
   (if (ir-call-p (ir-value-producer ast))
-      (break "todo")
+      (let* ((the-call (ir-value-producer ast))
+             (function (typo:fnrecord-function (ir-call-fnrecord the-call)))
+             (a (first (ir-node-inputs the-call)))
+             (b (second (ir-node-inputs the-call)))
+             (this (lambda (arg) (affine-expression-from-loopus-ast arg l s))))
+        (ins function)
+        ;; todo do something if more than 2 arguments
+        (cond
+          ((eql function #'typo:integer+) (isl::affine-add (funcall this a) (funcall this b)))
+          ((eql function #'typo:integer-) (isl::affine-sub (funcall this a) (funcall this b)))
+          ((eql function #'typo:integer*) (isl::affine-mul (funcall this a) (funcall this b)))
+          ;; todo rationnal
+          ;;((eql function #'typo:integer/) (isl::affine-div (funcall this a) (funcall this b)))
+          (t (break "Right now we don't support your expression ~a" ast))))
       ;; Otherwise, base case
       (let ((pos-variable (is-loop-variable ast)))
         (if pos-variable
@@ -352,9 +365,9 @@
                    ;; So (cdr args) is (a b c d e)
                    (cons (first (cdr args)) (reverse (cddr args)))
                    ))
-             (map-of-read/write (apply #'create-new-point-range what-is-read/wrote-in-order))
-             (map-of-read/write (isl:basic-map-union-map map-of-read/write))
-             (map-of-read/write (isl:union-map-intersect-domain map-of-read/write current-timestamp))
+             ;(map-of-read/write (apply #'create-new-point-range what-is-read/wrote-in-order))
+             ;(map-of-read/write (isl:basic-map-union-map map-of-read/write))
+             ;(map-of-read/write (isl:union-map-intersect-domain map-of-read/write current-timestamp))
              (my-map (isl:basic-set-union-set (apply #'create-new-point-set what-is-read/wrote-in-order)))
              (map-of-read/write (isl:union-map-from-domain-and-range current-timestamp my-map)))
         (when is-aref (push-map *map-read* map-of-read/write))

@@ -29,7 +29,7 @@
       (print "1d")
       (print 1d)
       (loopus:for (i 0 10)
-        (setf (aref 1d i #+or(- 9 i)) i))
+        (setf (aref 1d (- 9 i)) i))
       (print 1d))
 
 
