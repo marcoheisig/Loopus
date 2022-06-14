@@ -23,10 +23,19 @@
          (matrix-C-check (make-array (list dim-C-x dim-C-y)))
          ;; Various variables
          (accumulator (make-array 1))) ; todo later variable to 1d array to
-    ;; Sum over arrays
 
-    ;; 1D
+    ;; Index which are an operation
     (progn
+      (print "1d")
+      (print 1d)
+      (loopus:for (i 0 10)
+        (setf (aref 1d i #+or(- 9 i)) i))
+      (print 1d))
+
+
+    ;; Sum over arrays
+    ;; 1D
+    #+or(progn
       (print "1d")
       (print 1d)
       (loopus:for (i v-start v-end)
@@ -42,7 +51,7 @@
 
     ;; 2D
     ;; aref not taking into accoutn?
-    (progn
+    #+or(progn
       (print "2d")
       (loop for i below 10 do
         (loop for j below 10 do
@@ -75,7 +84,7 @@
       (print accumulator))
 ;; todo - reverse on ast generation for proximity
     ;; 3D
-    (progn
+    #+or(progn
       (print "3d")
       (loopus:for (i 0 8)
         (loopus:for (j 0 9)

@@ -182,11 +182,53 @@
 ;;;;;;;;;;;;;;;
 
 ;; This will get called on each instruction that can read or write
+
+;; First, create the affine expression
+(defun affine-expression-from-loopus-ast (ast l s)
+  (ins ast)
+  ;; If it's a call, we do a recursive call to ourself :-)
+  (if (ir-call-p (ir-value-producer ast))
+      (break "todo")
+      ;; Otherwise, base case
+      (let ((pos-variable (is-loop-variable ast)))
+        (if pos-variable
+            (isl::create-var-affine s :dim-set (- (- l 1) pos-variable))
+            (isl::create-val-affine s (isl:value (second (ir-value-declared-type ast))))))))
+
 ;; Todo comment
 
 (defun get-value (node)
   (let* ((producer (ir-value-producer node)))
     (uniquenumber producer)))
+(defun create-new-point-set (&rest args)
+  (let* ((result (isl:basic-set-universe *space-range*))
+         (local-space (isl:local-space-from-space *space-range*))
+         (bot (isl::make-equality-constraint local-space)))
+    ;; First the array
+    (setf bot (isl::equality-constraint-set-constant bot (isl:value (get-value (first args)))))
+    (setf bot (isl::equality-constraint-set-coefficient bot :dim-out 0 (isl:value -1)))
+    (setf result (isl:basic-set-add-constraint result bot))
+    ;; We do all arguments of the read. So if (aref a b c 1 3) we do for a b c 1 3
+    (loop for idx from 1 below (length args) do
+      (ins 2)
+      ;;(ins result)
+      (let* ((affine-expression (affine-expression-from-loopus-ast (nth idx args) (length args)
+                                                                  local-space))
+             (_ (ins affine-expression))
+             (new-set (isl::affine-basic-set affine-expression (isl::create-var-affine local-space :dim-set idx))))
+        (ins new-set)
+        (ins 1)
+        (setf result (isl::basic-set-intersect result new-set))))
+    ;; Fill for the rest with a single value
+    (loop for p from (length args) below *size-range* do
+      (let* ((bot (isl::make-equality-constraint local-space))
+             (bot (isl::equality-constraint-set-constant bot (isl:value -1)))
+             (bot (isl::equality-constraint-set-coefficient bot :dim-set p (isl:value -1))))
+        (setf result (isl:basic-set-add-constraint result bot))))
+    result))
+
+
+
 (defun create-new-point-range (&rest args)
   (let* ((result (isl:basic-map-universe *space-map-domain-range*))
          (*space-map-domain-range* (isl:local-space-from-space *space-map-domain-range*))
@@ -218,8 +260,6 @@
                  (bot (isl::equality-constraint-set-coefficient bot :dim-out p (isl:value -1)))
                  (_ (setf result (isl:basic-map-add-constraint result bot))))))
     result))
-
-
 
 ;;;;;;;;;;;;;;;
 ;; SCHEDULE
@@ -314,7 +354,9 @@
                    ))
              (map-of-read/write (apply #'create-new-point-range what-is-read/wrote-in-order))
              (map-of-read/write (isl:basic-map-union-map map-of-read/write))
-             (map-of-read/write (isl:union-map-intersect-domain map-of-read/write current-timestamp)))
+             (map-of-read/write (isl:union-map-intersect-domain map-of-read/write current-timestamp))
+             (my-map (isl:basic-set-union-set (apply #'create-new-point-set what-is-read/wrote-in-order)))
+             (map-of-read/write (isl:union-map-from-domain-and-range current-timestamp my-map)))
         (when is-aref (push-map *map-read* map-of-read/write))
         (when is-setf (push-map *map-write* map-of-read/write)))
       ;; Add to *map-schedule*
