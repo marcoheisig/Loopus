@@ -17,7 +17,7 @@
 (defparameter *space-domain* (isl:create-space-set 0 *size-domain*))
 
 ;; To create points on the range side
-(defparameter *size-range* 5)
+(defparameter *size-range* 6)
 ;; The max of the size needed for each read/write
 ;; A[i, j] consumes 3 spot
 (defparameter *space-range* (isl:create-space-set 0 *size-range*))
@@ -198,20 +198,26 @@
              (this (lambda (arg) (affine-expression-from-loopus-ast arg total-length local-space)))
              (new-a (funcall this a))
              (new-b (funcall this b)))
-        ;; integer+ integer- integer* takes 2 arguments due to typo
-        ;; todo generalize by checking if types and number of arguments are ok to do the thing below
-        (ecase (typo:fnrecord-name (ir-call-fnrecord the-call))
-          (typo:integer+ (isl:affine-add new-a new-b))
-          (typo:integer- (isl:affine-sub new-a new-b))
-          (typo:integer* (isl:affine-mul new-a new-b))
-           ;; otherwise universe set todo
-          ;; todo rationnal
-          #+or(typo:integer/ (isl:affine-div new-a new-b))))
-      ;; Otherwise, base case
-      (let ((pos-variable (is-loop-variable ast)))
-        (if pos-variable
-            (isl:create-var-affine local-space :dim-set (- (1- total-length) pos-variable))
-            (isl:create-val-affine local-space (isl:value (second (ir-value-declared-type ast)))))))) ; todo derived type
+        ;; If one of the expression isn't recognized, we are not recognized too
+        (if (not (and new-a new-b))
+            nil
+            ;; integer+ integer- integer* takes 2 arguments due to typo
+            ;; todo generalize by checking if types and number of arguments are ok to do the thing below
+            (case (typo:fnrecord-name (ir-call-fnrecord the-call))
+              (typo:integer+ (isl:affine-add new-a new-b))
+              (typo:integer- (isl:affine-sub new-a new-b))
+              (typo:integer* (isl:affine-mul new-a new-b))
+              ;; otherwise universe set todo
+              ;; todo rationnal
+              #+or(typo:integer/ (isl:affine-div new-a new-b))
+              (otherwise
+               ;; Otherwise, we don't know/recognize what it is. Return the universe
+               nil))))
+        ;; Otherwise, base case
+        (let ((pos-variable (is-loop-variable ast)))
+          (if pos-variable
+              (isl:create-var-affine local-space :dim-set (- (1- total-length) pos-variable))
+              (isl:create-val-affine local-space (isl:value (second (ir-value-declared-type ast)))))))) ; todo derived type
 
   ;; maybe a variable
 
@@ -228,7 +234,7 @@
   ;; Creation of the result map, and adding the constraint of the array
   (let* ((result (isl:basic-map-universe *space-map-domain-range*))
          (local-space (isl:local-space-from-space *space-map-domain-range*))
-         (local-space-tmp (isl:local-space-from-space *space-range*))
+         (local-space-tmp (isl:local-space-from-space *space-domain*))
          (bot (isl:make-equality-constraint local-space))
          (bot (isl:equality-constraint-set-constant bot (isl:value (get-value (first args)))))
          (bot (isl:equality-constraint-set-coefficient bot :dim-out 0 (isl:value -1)))
@@ -238,17 +244,22 @@
       ;; For everything we read, we create an affixe expression of what it is, and create the associated map
       (let* ((affine-expression (affine-expression-from-loopus-ast
                                  (nth idx args) (length args) local-space-tmp))
-             (new-map (isl:basic-map-from-affine affine-expression))
+             (new-map (if affine-expression
+                          (isl:basic-map-from-affine affine-expression)
+                          (isl:basic-map-universe *space-map-domain-range*)))
              ;; The map we just created is [o0, o1, ...] -> [our expression]
+             ;; (Unless affine-expression is nil (not recognized), and then we already have the good map)
              ;; We need to extend the range to obtain [o0, o1, ...] -> [i0, our expression, ...]
              ;; We add first everything before; then everything after
              ;; idx here is (+ 1 (1- idx)) ; 1 is for the array, (1- idx) is the every loop variable before
-             (new-map (isl:basic-map-insert-dimension new-map :dim-out 0 idx))
+             (_ (when affine-expression
+                  (setf new-map (isl:basic-map-insert-dimension new-map :dim-out 0 idx))))
              ;; About 0, and (1+ idx). It's the insertion position.
              ;; The final result we want is [smth, our expression, smth]
              ;; So first, we insert before, hence the 0
              ;; Then, we insert just after, hence (1+ idx). We inserted idx elements, so we have (1+ idx) total elements
-             (new-map (isl:basic-map-insert-dimension new-map :dim-out (1+ idx) (- *size-range* (length args)))))
+             (_ (when affine-expression
+                  (setf new-map (isl:basic-map-insert-dimension new-map :dim-out (1+ idx) (- *size-range* (length args)))))))
         (setf result (isl:basic-map-intersect result new-map))))
     ;; Fill for the rest with a single value
     (loop for p from (length args) below *size-range* do
