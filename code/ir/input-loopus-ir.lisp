@@ -13,11 +13,12 @@
 ;; To create points on the domain side
 ;; 1 global time
 ;; 1 for each variable
-(defparameter *size-domain* 5)
+;; Needs to be even
+(defparameter *size-domain* (* 2 4))
 (defparameter *space-domain* (isl:create-space-set 0 *size-domain*))
 
 ;; To create points on the range side
-(defparameter *size-range* 6)
+(defparameter *size-range* 5)
 ;; The max of the size needed for each read/write
 ;; A[i, j] consumes 3 spot
 (defparameter *space-range* (isl:create-space-set 0 *size-range*))
@@ -32,7 +33,7 @@
 (defparameter *size-free-parameters* 5)
 
 ;; A hack. List of all loop variables
-(defparameter possible-loop-variables (mapcar #'read-from-string (list "C0" "C1" "C2" "C3" "C4" "C5" "C6" "C7" "C8" "C9")))
+(defparameter possible-loop-variables (mapcar #'read-from-string (list "C1" "C3" "C5" "C7" "C9")))
 
 ;; Add parameters from free variables
 ;; Position can be found with the hashtable
@@ -138,36 +139,48 @@
   ;; The structure we want to have: see commentary above. Start from universe, and create each part
   ;; [*counter-domain* only once, i for i in loop-var, -1 for the rest] -- One s-expr for each part
   ;; *counter-domain only once part
+  #|
   (let* ((result (isl:basic-set-universe *space-domain*))
          (*space-domain* (isl:local-space-from-space *space-domain*))
          ;;(result (add-all-loop-identifier result))
-         ;; [*, *] - universe
-         (bot (isl::make-equality-constraint *space-domain*))
-         (bot (isl::equality-constraint-set-constant bot (isl:value *counter-domain*)))
-         (bot (isl::equality-constraint-set-coefficient bot :dim-set 0 (isl:value -1)))
-         (_ (setf result (isl:basic-set-add-constraint result bot))))
+  ;; [*, *] - universe
+  (bot (isl::make-equality-constraint *space-domain*))
+  (bot (isl::equality-constraint-set-constant bot (isl:value *counter-domain*)))
+  (bot (isl::equality-constraint-set-coefficient bot :dim-set 0 (isl:value -1)))
+  (_ (setf result (isl:basic-set-add-constraint result bot))))
+  |#
+  (let* ((result (isl:basic-set-universe *space-domain*))
+         (*space-domain* (isl:local-space-from-space *space-domain*)))
     ;; Now we have [*counter-domain*, *]
     ;; Part for each loop var
-    (loop for p below *current-depth* do
-      (let* ((bounds (nth p (reverse *loop-bounds*)))
+    (loop for p below (* 2 *current-depth*) by 2 do
+      ;; First, the creation of the global counter, and then the loop variable
+      (let* (;; Creation of the global counter
+             (bot (isl::make-equality-constraint *space-domain*))
+             (bot (isl::equality-constraint-set-constant bot (isl:value *counter-domain*)))
+             (bot (isl::equality-constraint-set-coefficient bot :dim-set p (isl:value -1)))
+             (_ (setf result (isl:basic-set-add-constraint result bot)))
+             ;; Creation of the variable
+             (bounds (nth (/ p 2) (reverse *loop-bounds*)))
+             (p (1+ p))
              ;; The variable at the very left is the outer loop, so it's the good order
              (start-value (first bounds))
              (end-value (second bounds))
              (bot (isl::make-inequality-constraint *space-domain*))
              (bot (add-constant-constraint bot start-value -1 0))
-             (bot (isl::inequality-constraint-set-coefficient bot :dim-set (1+ p) (isl:value 1)))
+             (bot (isl::inequality-constraint-set-coefficient bot :dim-set p (isl:value 1)))
              (_ (setf result (isl:basic-set-add-constraint result bot)))
              ;; Creation of [*, i] : start <= i
              (bot (isl::make-inequality-constraint *space-domain*))
              (bot (add-constant-constraint bot end-value 1 -1))
-             (bot (isl::inequality-constraint-set-coefficient bot :dim-set (1+ p) (isl:value -1)))
+             (bot (isl::inequality-constraint-set-coefficient bot :dim-set p (isl:value -1)))
              ;; Creation of [*, i] : start <= i < end
              ;; The "<" comes from the -1 in add-constant-constraint. We actually create i <= end - 1
              ;; End of this iteration: [*counter-domain*, i for one more variable] : start <= i < end
              (_ (setf result (isl:basic-set-add-constraint result bot))))))
     ;; Now we have [*counter-domain*, i for i in loop-var, *]
     ;; Part to fill the rest
-    (loop for p from (1+ *current-depth*) below *size-domain* do
+    (loop for p from (* 2 *current-depth*) below *size-domain* do
       (let* ((bot (isl::make-equality-constraint *space-domain*))
              (bot (isl::equality-constraint-set-constant bot (isl:value -1)))
              (bot (isl::equality-constraint-set-coefficient bot :dim-set p (isl:value -1)))
@@ -214,13 +227,13 @@
                ;; Otherwise, we don't know/recognize what it is. Return the universe
                nil))))
         ;; Otherwise, base case
-        (let ((pos-variable (is-loop-variable ast)))
-          (if pos-variable
-              (isl:create-var-affine local-space :dim-set (- (1- total-length) pos-variable))
-              (isl:create-val-affine local-space (isl:value (second (ir-value-declared-type ast)))))))) ; todo derived type
+      (let ((pos-variable (is-loop-variable ast)))
+        (ins *loop-variables*)
+        (if pos-variable
+            (isl:create-var-affine local-space :dim-set (1+ (* 2 pos-variable)))
+            (isl:create-val-affine local-space (isl:value (second (ir-value-declared-type ast)))))))) ; todo derived type
 
-  ;; maybe a variable
-
+;; maybe a variable
 
 ;; (aref array loop-variable)
 ;; { [i] -> array[3] }
@@ -374,7 +387,6 @@
     ;; Otherwise if it's in a "i" loop, it'd be for instance { [0, i]: start <= i < end }
     ;; For each point of this set, a read/write operation is maybe performed
     ;; We want to add to *map-read/write* the map, for instance, { [0, i] -> A[i, 0] } if A[i, 0] is read
-
     ;; Will become (when (or "map read can be modified" "map write can be modified"))
     (when (or is-aref is-setf)
       ;; Add the loopus node to the hashtable
@@ -399,7 +411,8 @@
              ;;(map-of-read/write (isl:basic-map-union-map map-of-read/write))
              ;;(map-of-read/write (isl:union-map-intersect-domain map-of-read/write current-timestamp))
              ;; End of old version
-             (map-of-read/write (isl:basic-map-union-map (apply #'create-new-point-range-new what-is-read/wrote-in-order))))
+             (map-of-read/write (isl:basic-map-union-map (apply #'create-new-point-range-new what-is-read/wrote-in-order)))
+             (map-of-read/write (isl:union-map-intersect-domain map-of-read/write current-timestamp)))
         (when is-aref (push-map *map-read* map-of-read/write))
         (when is-setf (push-map *map-write* map-of-read/write)))
       ;; Add to *map-schedule*
@@ -421,18 +434,18 @@
   ;; First, we add informations (the current loop variable, the depth, etc...)
   ;; And then, last s-expr, call recursively on the body of the loop!
   ;; List of loop variables
-  (push
-   (ir-loop-variable node)
-   *loop-variables*)
-  ;; Current depth we are in
-  (setf (gethash node *depth-node*) *current-depth*)
-  (incf *current-depth*)
-  ;; Loop bounds
-  (let* ((inputs (ir-node-inputs node))
+  (let* ((*loop-variables* (append *loop-variables* (list (ir-loop-variable node))))
+         ;; Current depth we are in
+         (old-hash-table (alexandria:copy-hash-table *depth-node*))
+         (_ (setf (gethash node *depth-node*) *current-depth*))
+         (*current-depth* (1+ *current-depth*))
+         ;; Loop bounds
+         (inputs (ir-node-inputs node))
          (start (parse-bound (first inputs)))
-         (end (parse-bound (second inputs))))
-    ;;(ins end)
-    ;; todo step too ?
-    (push (list start end) *loop-bounds*))
-  ;; Recursive call
-  (map-block-inner-nodes #'update-node (ir-loop-body node)))
+         (end (parse-bound (second inputs)))
+         ;; todo step too ?
+         (*loop-bounds* (cons (list start end) *loop-bounds*)))
+    ;; Recursive call
+    (map-block-inner-nodes #'update-node (ir-loop-body node))
+    ;; restore the hashtable
+    (setf *depth-node* old-hash-table)))
