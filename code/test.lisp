@@ -35,7 +35,7 @@
       (loopus:for (i 0 10)
         ;(setf (aref 1d i #+or(/ 2 (+ 1 i))) i)
         (loopus:for (j 0 10)
-          (setf (aref 2d j) j))
+          (setf (aref 2d i) j))
         #+or(loopus:for (k 0 10)
           (setf (aref 3d k) k)))
       (print 1d))
