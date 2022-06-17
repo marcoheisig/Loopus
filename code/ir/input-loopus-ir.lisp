@@ -33,7 +33,7 @@
 (defparameter *size-free-parameters* 5)
 
 ;; A hack. List of all loop variables
-(defparameter possible-loop-variables (mapcar #'read-from-string (list "C1" "C3" "C5" "C7" "C9")))
+(defparameter possible-loop-variables (mapcar #'read-from-string (list "C0" "C1" "C2" "C3" "C4" "C5" "C6" "C7" "C8" "C9")))
 
 ;; Add parameters from free variables
 ;; Position can be found with the hashtable
@@ -271,7 +271,7 @@
              ;; So first, we insert before, hence the 0
              ;; Then, we insert just after, hence (1+ idx). We inserted idx elements, so we have (1+ idx) total elements
              (_ (when affine-expression
-                  (setf new-map (isl:basic-map-insert-dimension new-map :dim-out (1+ idx) (- *size-range* (length args)))))))
+                  (setf new-map (isl:basic-map-insert-dimension new-map :dim-out (1+ idx) (- *size-range* (1+ idx)))))))
         (setf result (isl:basic-map-intersect result new-map))))
     ;; Fill for the rest with a single value
     (loop for p from (length args) below *size-range* do
@@ -446,5 +446,8 @@
          (*loop-bounds* (cons (list start end) *loop-bounds*)))
     ;; Recursive call
     (map-block-inner-nodes #'update-node (ir-loop-body node))
+    ;; No need to restore the hashtable, every node is different
+    ;; todo makes sure of that and clean
     ;; restore the hashtable
-    (setf *depth-node* old-hash-table)))
+    ;;(setf *depth-node* old-hash-table)
+    ))

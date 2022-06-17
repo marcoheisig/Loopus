@@ -56,7 +56,8 @@
         (let ((answer (make-instance 'ir-value)))
           (setf *values* (cons (cons v answer) *values*))
           answer))))
-
+(defun delete-loop-var (v)
+  (setf *values* (cdr *values*)))
 ;;;;;;;;;;;;;;;
 ;; Execute-expr
 ;;;;;;;;;;;;;;;
@@ -157,12 +158,13 @@
                                    :unknown)
                     :body (make-instance 'ir-initial-node :dominator loop-node))
       (setf (slot-value variable '%producer) loop-node)
-      (push variable *depth-loop-variables*)
-      (setf (gethash node *ir-value-copies*) variable)
-      (incf *current-depth*)
-      ;;todo
-      (setf (slot-value loop-node '%body) (my-main body loop-node))
-      loop-node)))
+      (let ((*depth-loop-variables* (cons variable *depth-loop-variables*))
+            (_ (setf (gethash node *ir-value-copies*) variable))
+            (*current-depth* (1+ *current-depth*)))
+        ;;todo
+        (setf (slot-value loop-node '%body) (my-main body loop-node))
+        (delete-loop-var variable)
+        loop-node))))
 
 
 (defmethod copy-ir-node ((context (eql 'output)) (ir ir-value))
@@ -227,8 +229,8 @@
   (let* ((node (isl::user-node-get-expr node))
          (how-many-args (isl::op-expr-get-n-arg node))
          ;; Todo resolve this thing
-         (how-many-args (+ 2 *current-depth*))
-         (args (loop for i from 1 below how-many-args collect (isl::op-expr-get-op-arg node i)))
+         (how-many-args (* 2 (1+ *current-depth*)))
+         (args (loop for i from 0 below how-many-args by 2 collect (isl::op-expr-get-op-arg node i)))
          (counter-value (isl::value-object
                          (isl::int-expr-get-value
                           (isl::op-expr-get-op-arg node 1))))
@@ -240,6 +242,8 @@
                           (isl::id-expr-get-id c))
                          possible-loop-variables))
                       (cdr args)))
+         ;;(_ (ins2 old-code *depth-loop-variables*))
+         ;;(_ (ins idx))
          (old-code (let* ((cp *depth-loop-variables*)
                           (_ (setf *depth-loop-variables*
                                    (reverse

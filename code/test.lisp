@@ -9,6 +9,7 @@
          ;; Single loop over arrays
          (1d (make-array dim))
          (2d (make-array (list dim dim)))
+         (2dd (make-array (list dim dim)))
          (3d (make-array (list dim dim dim)))
          ;(4d (make-array (list dim dim dim dim)))
          ;; Matrix multiplication
@@ -27,17 +28,22 @@
 
     ;;(loop i (loop j (aref i i))) -> memory proximity is weird (same for j)
     ;;the first variable is the most outer loop
+    ;; With this memory it's working fine
+    ;;(memory-proximity (union-map-from-str "{ [0, i1, 0, i3, -1, -1, -1, -1] -> [0, 1 + i1, 0, i3, -1, -1, -1, -1] : 0 <= i1 <= 8 and 0 <= i3 <= 9 }"))
+    ;; Doesnt work when it's { [0, i1, 0, i3, -1, -1, -1, -1] -> [0, 1 + i1, 0, o3, -1, -1, -1, -1] : 0 <= i1 <= 8 and 0 <= i3 <= 9 and 0 <= o3 <= 9 }>
+    ;; Which is the correct thing, and should still reorder :(
+    ;; todo
 
     ;; Index which are an operation
-    (progn
+    #+or(progn
       (print "1d")
       (print 1d)
-      (loopus:for (i 0 10)
+      (loopus:for (i 0 9)
         ;(setf (aref 1d i #+or(/ 2 (+ 1 i))) i)
         (loopus:for (j 0 10)
-          (setf (aref 2d i) j))
-        #+or(loopus:for (k 0 10)
-          (setf (aref 3d k) k)))
+          (setf (aref 2d i j) j))
+        (loopus:for (k 0 10)
+          (setf (aref 2dd i k) k))) ;; todo when we use j here, the error is weird (hard to understand we use a non-defined variable)
       (print 1d))
 
 
@@ -59,7 +65,7 @@
 
     ;; 2D
     ;; aref not taking into accoutn?
-    #+or(progn
+    (progn
       (print "2d")
       (loop for i below 10 do
         (loop for j below 10 do
