@@ -24,6 +24,10 @@
          ;; Various variables
          (accumulator (make-array 1))) ; todo later variable to 1d array to
 
+
+    ;;(loop i (loop j (aref i i))) -> memory proximity is weird (same for j)
+    ;;the first variable is the most outer loop
+
     ;; Index which are an operation
     (progn
       (print "1d")
