@@ -32,9 +32,6 @@
 ;; How many free variable we can have
 (defparameter *size-free-parameters* 5)
 
-;; A hack. List of all loop variables
-(defparameter possible-loop-variables (mapcar #'read-from-string (list "C0" "C1" "C2" "C3" "C4" "C5" "C6" "C7" "C8" "C9")))
-
 ;; Add parameters from free variables
 ;; Position can be found with the hashtable
 (defparameter *free-variable-to-index* (make-hash-table :test 'equal))

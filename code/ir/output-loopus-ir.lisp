@@ -5,6 +5,8 @@
 (defparameter node nil)
 (defparameter *ir-value-copies* nil)
 
+(defparameter possible-loop-variables nil)
+
 (declaim (optimize (speed 0) (space 0) (debug 3) (safety 3)))
 
 (defparameter *values* nil)
@@ -83,7 +85,7 @@
   (let* ((v (isl:id-expr-get-id expr))
          (v (isl:identifier-name v)))
     ;; Simple loop variable
-    (if (position v possible-loop-variables)
+    (if (position (isl:id-expr-get-id expr) possible-loop-variables)
         (create-loop-var v)
         ;; If it's a free variable we modify the value we use, otherwise it'll be v
         (let* ((answer (gethash
@@ -132,6 +134,7 @@
 
 (defmethod execute-node ((node isl::for-node))
   (let* ((variable (isl::for-node-get-iterator node))
+         (possible-loop-variables (append possible-loop-variables (list (isl:id-expr-get-id variable))))
          (start-value (isl::for-node-get-init node))
          (end-condition (isl::for-node-get-cond node))
          ;;(_ (assert (cl-isl::%isl-ast-expr-is-equal variable (cl-isl::%isl-ast-expr-get-op-arg end-condition 0))))
@@ -237,9 +240,7 @@
          (old-node (gethash counter-value *id-to-expression*))
          (old-code (ir-node-inputs old-node))
          (idx (mapcar (lambda (c)
-                        (position
-                         (isl::identifier-name
-                          (isl::id-expr-get-id c))
+                        (position (isl::id-expr-get-id c)
                          possible-loop-variables))
                       (cdr args)))
          ;;(_ (ins2 old-code *depth-loop-variables*))

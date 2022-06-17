@@ -27,6 +27,7 @@
     ;; Special parameters - outputs
     (setf node nil)
     (setf *ir-value-copies* (make-hash-table))
+    (setf possible-loop-variables nil)
     (setf *values* '())
     (setf *depth-loop-variables* '())
     (setf *current-depth* 0)
