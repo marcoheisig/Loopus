@@ -113,7 +113,7 @@
   (if (integerp value)
       ;; integer
       (isl::inequality-constraint-set-constant constraint (isl:value (+ delta (* i value))))
-      (let ((idx-loop-variable (position value (reverse *loop-variables*))))
+      (let ((idx-loop-variable (position value *loop-variables*)))
         (if idx-loop-variable
             ;; loop variable
             (isl::inequality-constraint-set-coefficient
@@ -228,7 +228,6 @@
                nil))))
         ;; Otherwise, base case
       (let ((pos-variable (is-loop-variable ast)))
-        (ins *loop-variables*)
         (if pos-variable
             (isl:create-var-affine local-space :dim-set (1+ (* 2 pos-variable)))
             (isl:create-val-affine local-space (isl:value (second (ir-value-declared-type ast)))))))) ; todo derived type
@@ -340,7 +339,7 @@
              (pos-variable (is-loop-variable (nth idx (first args))))
              (bot (isl::equality-constraint-set-coefficient
                    bot
-                   :dim-in (+ 1 pos-variable)
+                   :dim-in (+ 1 pos-variable) 
                    (isl:value -1)))
              (bot (isl::equality-constraint-set-coefficient
                    bot
