@@ -11,50 +11,38 @@
 
 
 ;; To create points on the domain side
-;; 1 global time
-;; 1 for each variable
-;; Needs to be even
-(defparameter *size-domain* (* 2 4))
-(defparameter *space-domain* (isl:create-space-set 0 *size-domain*))
+(defparameter *size-domain* nil)
+;; Needs to be even. 2 per loop variable
+(defparameter *space-domain* nil)
 
 ;; To create points on the range side
-(defparameter *size-range* 5)
-;; The max of the size needed for each read/write
-;; A[i, j] consumes 3 spot
-(defparameter *space-range* (isl:create-space-set 0 *size-range*))
+(defparameter *size-range* nil)
+;; A[i, j] consumes 3 spot (1 for the array, 1 for i, 1 for j)
+(defparameter *space-range* nil)
 
 ;; The space of maps (domain -> range)
-(defparameter *space-map-domain-range* (isl:create-space-map 0 *size-domain* *size-range*))
+(defparameter *space-map-domain-range* nil)
 
 ;; The space of schedule (domain -> domain)
-(defparameter *space-map-schedule* (isl:create-space-map 0 *size-domain* *size-domain*))
+(defparameter *space-map-schedule* nil)
 
 ;; How many free variable we can have
-(defparameter *size-free-parameters* 5)
+(defparameter *size-free-parameters* nil)
 
 ;; Add parameters from free variables
 ;; Position can be found with the hashtable
-(defparameter *free-variable-to-index* (make-hash-table :test 'equal))
-(loop for i below *size-free-parameters* do
-  (let ((id (isl::make-gensym-identifier 'free-variable)))
-    (setf (gethash (symbol-name (isl:identifier-name id)) *free-variable-to-index*) i)
-    (setf *space-domain* (isl::space-add-param-id *space-domain* id))
-    (setf *space-range* (isl::space-add-param-id *space-range* id))
-    (setf *space-map-domain-range* (isl::space-add-param-id *space-map-domain-range* id))
-    (setf *space-map-schedule* (isl::space-add-param-id *space-map-schedule* id))))
+(defparameter *free-variable-to-index* nil)
 
 ;; hashtable of ir-construct-node to position of the identifier
 (defparameter *construct-to-identifier* nil) ;; ir-construct-node to position (integer)
 (defparameter position-next-free-variable nil) ;; at first it's *size-domain*. Gets incf each time
 
 
-
 ;; Definition of variables that will hold the set/map of domain/read/write/schedule
-;; defparameter
-(defparameter *set-domain* (isl:union-set-empty *space-domain*))
-(defparameter *map-read* (isl:union-map-empty *space-map-domain-range*))
-(defparameter *map-write* (isl:union-map-empty *space-map-domain-range*))
-(defparameter *map-schedule* (isl:union-map-empty *space-map-schedule*))
+(defparameter *set-domain* nil)
+(defparameter *map-read* nil)
+(defparameter *map-write* nil)
+(defparameter *map-schedule* nil)
 
 
 
