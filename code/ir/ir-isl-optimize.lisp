@@ -2,6 +2,29 @@
 
 ;; todo if ?
 
+
+;; Max loop depth
+(defmethod map-tree-inner-nodes (_ (ir ir-node) (context (eql 'depth))) 0)
+(defmethod map-tree-inner-nodes (_ (ir ir-loop) (context (eql 'depth)))
+  (1+ (call-next-method)))
+
+;; Max array dimension
+(defmethod map-tree-inner-nodes (_ (ir ir-node) (context (eql 'arraydimension)))
+  0)
+(defmethod max-tree-inner-nodes (_ (ir ir-call) (context (eql 'arraydimension)))
+  (let ((args (ir-node-inputs ir))
+        (is-aref (eql 'aref (typo:fnrecord-name (ir-call-fnrecord ir))))
+        (is-setf (equal '(setf aref) (typo:fnrecord-name (ir-call-fnrecord ir)))))
+    (cond
+      ;; args is either (aref array idx...) or ((setf aref) value array idx...)
+      (is-aref (length (cdr args))) ; it's (aref array idx1 idx2 ...)
+      (is-setf (length (cddr args))) ; it's ((setf aref) value array idx1 idx2), hence cddr
+      (t 0))))
+
+;; Free parameters
+(defmethod map-tree-inner-nodes (_ (ir ir-node) (context (eql 'free-parameters))) 0)
+(defmethod map-tree-inner-nodes (_ (ir ir-construct) (context (eql 'free-parameters))) 1) ; todo better upper bound
+
 ;; Max loop depth
 (defgeneric compute-max-loop-depth (ir))
 (defmethod compute-max-loop-depth ((ir ir-loop))
@@ -59,6 +82,8 @@
 
   ;; To create points on the domain side
   ;; Needs to be even. 2 per loop variable
+  (setf *size-domain* (* 2 (map-tree-inner-nodes #'max ir 'depth)))
+  ;;(unless (= *size-domain* (* 2 (compute-max-loop-depth ir))) (break "size domain wrong"))
   (setf *size-domain* (* 2 (compute-max-loop-depth ir)))
   (ins *size-domain*)
 
@@ -66,6 +91,8 @@
 
   ;; To create points on the range side
   ;; A[i, j] consumes 3 spot (1 for the array, 1 for i, 1 for j)
+  (setf *size-range* (1+ (map-tree-inner-nodes #'max ir 'arraydimension)))
+  ;;(unless (= *size-range* (1+ (compute-max-array-dimension ir))) (break "size range wrong"))
   (setf *size-range* (1+ (compute-max-array-dimension ir)))
   (ins *size-range*)
 
@@ -78,7 +105,9 @@
   (setf *space-map-schedule* (isl:create-space-map 0 *size-domain* *size-domain*))
 
   ;; How many free variable we can have
-  (setf *size-free-parameters* (compute-max-free-variable ir)) ;todo remove the hardcode
+  (setf *size-free-parameters* (map-tree-inner-nodes #'+ ir 'free-parameters))
+  ;;(unless (= *size-free-parameters* (compute-max-free-variable ir)) (break "size free parameter wrong"))
+  (setf *size-free-parameters* (compute-max-free-variable ir))
   (ins *size-free-parameters*)
 
   ;; Add parameters from free variables
@@ -139,4 +168,4 @@
       (print (ir-expand r))
       r)))
 
-;;(defun ir-isl-optimize (ir) ir)
+(defun ir-isl-optimize (ir) ir)

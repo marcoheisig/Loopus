@@ -103,6 +103,8 @@
 
 (defgeneric map-block-inner-nodes (function ir-node))
 
+(defgeneric map-tree-inner-nodes (function ir-node context))
+
 (defgeneric insert-ir-node-before (ir-node future-successor))
 
 (defgeneric insert-ir-node-after (ir-node future-predecessor))
@@ -442,6 +444,22 @@
             then (ir-node-successor node)
           until (eq node final-node) do
             (funcall function node))))
+
+(defmethod map-tree-inner-nodes (function (node ir-node) context))
+(defmethod map-tree-inner-nodes (function (node ir-loop) context)
+  (apply function (list
+                   (map-tree-inner-nodes function (ir-loop-body node) context))))
+(defmethod map-tree-inner-nodes (function (node ir-if) context)
+  (apply function (list
+                     (map-tree-inner-nodes function (ir-if-then node) context)
+                     (map-tree-inner-nodes function (ir-if-else node) context))))
+(defmethod map-tree-inner-nodes (function (initial-node ir-initial-node) context)
+  (let ((final-node (ir-final-node initial-node)))
+    (apply function
+             (loop for node = (ir-node-successor initial-node)
+                     then (ir-node-successor node)
+                   until (eq node final-node) collect
+                                              (map-tree-inner-nodes function node context)))))
 
 (defmethod insert-ir-node-before
     ((ir-node ir-inner-node)

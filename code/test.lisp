@@ -30,6 +30,8 @@
     ;;the first variable is the most outer loop
     ;; With this memory it's working fine
     ;;(memory-proximity (union-map-from-str "{ [0, i1, 0, i3, -1, -1, -1, -1] -> [0, 1 + i1, 0, i3, -1, -1, -1, -1] : 0 <= i1 <= 8 and 0 <= i3 <= 9 }"))
+
+
     ;; Doesnt work when it's { [0, i1, 0, i3, -1, -1, -1, -1] -> [0, 1 + i1, 0, o3, -1, -1, -1, -1] : 0 <= i1 <= 8 and 0 <= i3 <= 9 and 0 <= o3 <= 9 }>
     ;; Which is the correct thing, and should still reorder :(
     ;; todo
