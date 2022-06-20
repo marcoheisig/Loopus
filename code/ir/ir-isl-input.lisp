@@ -1,14 +1,7 @@
-(ql:quickload :cl-isl)
-
 (in-package :loopus.ir)
 
-(declaim (optimize (speed 0) (space 0) (debug 3) (safety 3)))
-(declaim (optimize (debug 3)))
-
-;; UTILITIES
-(defun ins (e)
-  (break "Inspect ~a" e))
-
+;; First, some variable. Lot of them
+;; Then, the code
 
 ;; To create points on the domain side
 (defparameter *size-domain* nil)
@@ -37,22 +30,17 @@
 (defparameter *construct-to-identifier* nil) ;; ir-construct-node to position (integer)
 (defparameter position-next-free-variable nil) ;; at first it's *size-domain*. Gets incf each time
 
-
 ;; Definition of variables that will hold the set/map of domain/read/write/schedule
 (defparameter *set-domain* nil)
 (defparameter *map-read* nil)
 (defparameter *map-write* nil)
 (defparameter *map-schedule* nil)
 
-
-
 ;; Modify a map to add it another map (union of both) (same for push-set)
 (defmacro push-map (map object)
   `(setf ,map (isl:union-map-union ,map ,object)))
 (defmacro push-set (set object)
   `(setf ,set (isl:union-set-union ,set ,object)))
-
-
 
 ;; Generate an unique number for each ir-node
 (defparameter *counter-range* nil) ; the value they'll have. It's just increment by 1 each time
@@ -83,6 +71,7 @@
 ;; Add constraint for each loop-var to have { [*counter*, loop-var] : start <= loop-var < end }
 ;; The function that does what is described just above is create-new-point-domain, 2 s-expr below
 
+
 ;; Add a constant value to the constraint. Can be a known value or a variable
 (defun add-constant-constraint (constraint value i delta)
   ;; 3 cases:
@@ -90,9 +79,7 @@
   ;; + loop variable -> *loop-variables* has the first value the most inner loop so we need to reverse it
   ;; + free variable -> pick from *construct-to-identifier*
 
-  ;; Delta is to fix the 1off error because constraint are <=
-  ;; It's either 0 when start <= loop-var. Or -1 when loop-var < end
-  ;; When it's integer we just add it. Otherwise we add it as a constant in the inequality
+  ;; Delta is here because constraints on isl are <=, and loopus it's <
   (if (integerp value)
       ;; integer
       (isl::inequality-constraint-set-constant constraint (isl:value (+ delta (* i value))))
@@ -165,9 +152,8 @@
 
 ;; This will get called on each instruction that can read or write
 
-;; todo this + 2 variable per loop depth
-
 ;; First, create the affine expression
+;; Todo merge this with add-constant-constraint
 (defun affine-expression-from-loopus-ast (ast local-space)
   ;; maybe ir-if
   ;; todo generic function
@@ -198,8 +184,18 @@
         ;; Otherwise, base case
       (let ((pos-variable (is-loop-variable ast)))
         (if pos-variable
+            ;; Loop variable
             (isl:create-var-affine local-space :dim-set (1+ (* 2 pos-variable)))
-            (isl:create-val-affine local-space (isl:value (second (ir-value-declared-type ast)))))))) ; todo derived type
+            (let ((idx-free-variable
+                    (alexandria:ensure-gethash
+                     (ir-construct-form (ir-value-producer ast))
+                     *construct-to-identifier*
+                     (incf position-next-free-variable))))
+              (if idx-free-variable
+                  ;; Free variable
+                  (isl:create-var-affine local-space :dim-param idx-free-variable)
+                  ;; Generic construct form
+                  (isl:create-val-affine local-space (isl:value (second (ir-value-derived-type ast))))))))))
 
 (defun get-value (node)
   (let* ((producer (ir-value-producer node)))
@@ -400,7 +396,6 @@
   ;; List of loop variables
   (let* ((*loop-variables* (append *loop-variables* (list (ir-loop-variable node))))
          ;; Current depth we are in
-         (old-hash-table (alexandria:copy-hash-table *depth-node*))
          (_ (setf (gethash node *depth-node*) *current-depth*))
          (*current-depth* (1+ *current-depth*))
          ;; Loop bounds
@@ -412,5 +407,6 @@
     ;; Recursive call
     (map-block-inner-nodes #'update-node (ir-loop-body node))
     ;; No need to restore the hashtable, every node is different ?
-    ;;(setf *depth-node* old-hash-table)
+    ;; Also it's used in the output part
+    ;;(setf (gethash node *depth-node*) nil)
     ))

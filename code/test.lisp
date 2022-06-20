@@ -51,11 +51,11 @@
 
     ;; Sum over arrays
     ;; 1D
-    #+or(progn
+   (progn
       (print "1d")
       (print 1d)
       (loopus:for (i v-start v-end)
-        (setf (aref 1d i) i))
+        (setf (aref 1d i) 2))
       (print 1d)
 
 
@@ -80,6 +80,8 @@
         (loop for j below 10 do
           (setf (aref 2d i j) 0)))
       (loopus:for (i 2 9)
+        #+or(loopus:for (j 1 i)
+          (setf (aref 2d j i) (+ i j)))
         (loopus:for (j 1 i)
           (setf (aref 2d j i) (+ i j))))
       (print 2d)
