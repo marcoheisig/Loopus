@@ -85,12 +85,12 @@
   ;; First, allocate the memory
   (setf *size-domain* (* 2 (map-tree-inner-nodes #'max ir 'depth)))
   (setf *size-domain* (* 2 (compute-max-loop-depth ir)))
-  (ins *size-domain*)
+  ;;(ins *size-domain*)
   (setf *space-domain* (isl:create-space-set 0 *size-domain*))
 
   (setf *size-range* (1+ (map-tree-inner-nodes #'max ir 'arraydimension)))
   (setf *size-range* (1+ (compute-max-array-dimension ir)))
-  (ins *size-range*)
+  ;;(ins *size-range*)
   (setf *space-range* (isl:create-space-set 0 *size-range*))
 
   (setf *space-map-domain-range* (isl:create-space-map 0 *size-domain* *size-range*))
@@ -98,7 +98,7 @@
 
   (setf *size-free-parameters* (map-tree-inner-nodes #'+ ir 'free-parameters))
   (setf *size-free-parameters* (compute-max-free-variable ir))
-  (ins *size-free-parameters*)
+  ;;(ins *size-free-parameters*)
 
   ;; Add parameters from free variables
   (setf *free-variable-to-index* (make-hash-table :test 'equal))
@@ -160,7 +160,7 @@
       (print (ir-expand r))
       r)))
 
-(defun ir-isl-optimize (ir) ir)
+;; (defun ir-isl-optimize (ir) ir)
 
 ;; utilities - to remove
 (defun ins (e)

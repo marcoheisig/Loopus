@@ -26,7 +26,6 @@
 ;; Now it's with the string of the name
 ;; (Because the lisp object wrapping the identifier changes even if it's the same identifier)
 (defun create-loop-var (loop-variable)
-  (ins loop-variable)
   (let ((loop-variable (isl::identifier-name (isl::id-expr-get-id loop-variable))))
     (alexandria:ensure-gethash loop-variable *id-to-nodes* (make-instance 'ir-value))))
 (defun delete-loop-var (loop-variable)
