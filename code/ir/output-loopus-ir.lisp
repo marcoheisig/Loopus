@@ -60,6 +60,8 @@
           answer))))
 (defun delete-loop-var (v)
   (setf *values* (cdr *values*)))
+
+
 ;;;;;;;;;;;;;;;
 ;; Execute-expr
 ;;;;;;;;;;;;;;;
@@ -113,7 +115,7 @@
 (defmethod execute-expr ((expr isl::ast-expr))
   (let* ((answer (make-instance 'ir-value)))
     (make-instance 'ir-call
-                   :fnrecord (make-instance 'typo:fnrecord :name (isl:op-expr-get-operator expr) :function #'+) ;;todo
+                   :fnrecord (make-instance 'typo:fnrecord :name (isl:op-expr-get-operator expr) :function #'+) ;;todo place the real function here instead of +
                    :inputs  (mapcar #'execute-expr (isl:op-expr-get-list-args expr))
                    :outputs (list answer))
     answer))
@@ -129,7 +131,7 @@
                         :fnrecord (make-instance 'typo:fnrecord :name '+ :function #'+)
                         :inputs (list expr1 expr2)
                         :outputs (list answer))))
-    ;;(setf *values* (cons (cons v answer) *values*))
+    ;;(setf *values* (cons (cons v answer) *values*)) ;todo
     answer))
 
 (defmethod execute-node ((node isl::for-node))
@@ -137,37 +139,38 @@
          (possible-loop-variables (append possible-loop-variables (list (isl:id-expr-get-id variable))))
          (start-value (isl::for-node-get-init node))
          (end-condition (isl::for-node-get-cond node))
+         (_ (assert (or (isl::op-le-p end-condition) (isl::op-lt-p end-condition))))
          ;;(_ (assert (cl-isl::%isl-ast-expr-is-equal variable (cl-isl::%isl-ast-expr-get-op-arg end-condition 0))))
-         ;; todo assert
+         ;; todo assert & export on the isl side & do everything
          (increment (isl::for-node-get-inc node))
          (end-value (isl::op-expr-get-op-arg end-condition 1))
-         (body (isl::for-node-get-body node)))
-    ;; Generation of the nodes
-    (let* ((variable (create-loop-var variable))
-           (start (execute-expr start-value))
-           (end-minus-step (execute-expr end-value))
-           (step (execute-expr increment))
-           (end (plus-expr end-minus-step step))
-           ;; We need to add step to end, because loopus generate code with "< end" constraint, and cl-isl has "<= end"
-           (loop-node (make-instance 'ir-node)))
-      (change-class loop-node 'ir-loop
-                    :variable variable
-                    :inputs (list start end step)
-                    :direction (if (eql (type-of increment) 'isl::int-expr)
-                                   (let ((value (isl::value-object (isl::int-expr-get-value increment))))
-                                     (if (> value 0) :ascending
-                                         (if (< value 0) :descending
-                                             :unknown)))
-                                   :unknown)
-                    :body (make-instance 'ir-initial-node :dominator loop-node))
-      (setf (slot-value variable '%producer) loop-node)
-      (let ((*depth-loop-variables* (cons variable *depth-loop-variables*))
-            (_ (setf (gethash node *ir-value-copies*) variable))
-            (*current-depth* (1+ *current-depth*)))
-        ;;todo
-        (setf (slot-value loop-node '%body) (my-main body loop-node))
-        (delete-loop-var variable)
-        loop-node))))
+         (body (isl::for-node-get-body node))
+         ;; Generation of the nodes
+         (variable (create-loop-var variable))
+         (start (execute-expr start-value))
+         (end-minus-step (execute-expr end-value))
+         (step (execute-expr increment))
+         ;; Depending on if it's "<" or "<=" we need to add the step to the end of not (because loopus is "<" only)
+         (end (if (isl::op-le-p end-condition) (plus-expr end-minus-step step) end-minus-step))
+         (loop-node (make-instance 'ir-node)))
+    (change-class loop-node 'ir-loop
+                  :variable variable
+                  :inputs (list start end step)
+                  :direction (if (eql (type-of increment) 'isl::int-expr)
+                                 (let ((value (isl::value-object (isl::int-expr-get-value increment))))
+                                   (if (> value 0) :ascending
+                                       (if (< value 0) :descending
+                                           :unknown)))
+                                 :unknown)
+                  :body (make-instance 'ir-initial-node :dominator loop-node))
+    (setf (slot-value variable '%producer) loop-node)
+    (let ((*depth-loop-variables* (cons variable *depth-loop-variables*))
+          (_ (setf (gethash node *ir-value-copies*) variable))
+          (*current-depth* (1+ *current-depth*)))
+      ;;todo
+      (setf (slot-value loop-node '%body) (my-main body loop-node))
+      (delete-loop-var variable)
+      loop-node)))
 
 
 (defmethod copy-ir-node ((context (eql 'output)) (ir ir-value))
@@ -203,36 +206,9 @@
         ;;(call-next-method)
         )))
 
-#+or(defmethod copy-ir-value (context (ir-value ir-value) &optional (ntype (typo:universal-ntype)))
-  ;;(copy-ir-node context (ir-value-producer ir-value))
-  (let ((found (gethash ir-value *ir-value-copies*))
-        (res
-          (let* ((declared-type (ir-value-declared-type ir-value))
-                 (declared-ntype (typo:type-specifier-ntype declared-type))
-                 (derived-ntype (ir-value-derived-ntype ir-value)))
-            (values
-             (alexandria:ensure-gethash
-              ir-value
-              *ir-value-copies*
-              (make-instance 'ir-value
-                             :declared-type declared-type
-                             :derived-ntype
-                             (typo:ntype-intersection
-                              declared-ntype
-                              (typo:ntype-intersection derived-ntype ntype))))))))
-    (when (and (not found) (ir-construct-p (ir-value-producer ir-value)))
-      (make-instance 'ir-construct
-                     :form (ir-construct-form (ir-value-producer ir-value))
-                     :outputs (list res)))
-    (when (and (not found) (ir-call-p (ir-value-producer ir-value)))
-      (copy-ir-node context (ir-value-producer ir-value)))
-    res))
-
 (defmethod execute-node ((node isl::user-node))
   (let* ((node (isl::user-node-get-expr node))
          (how-many-args (isl::op-expr-get-n-arg node))
-         ;; Todo resolve this thing
-         (how-many-args (* 2 (1+ *current-depth*)))
          (args (loop for i from 0 below how-many-args by 2 collect (isl::op-expr-get-op-arg node i)))
          (counter-value (isl::value-object
                          (isl::int-expr-get-value
@@ -243,8 +219,6 @@
                         (position (isl::id-expr-get-id c)
                          possible-loop-variables))
                       (cdr args)))
-         ;;(_ (ins2 old-code *depth-loop-variables*))
-         ;;(_ (ins idx))
          (old-code (let* ((cp *depth-loop-variables*)
                           (_ (setf *depth-loop-variables*
                                    (reverse
