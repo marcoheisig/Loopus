@@ -37,7 +37,7 @@
     ;; todo
 
     ;; Index which are an operation
-    #+or(progn
+    (progn
       (print "1d")
       (print 1d)
       (loopus:for (i 0 9)
@@ -45,7 +45,7 @@
         (loopus:for (j 0 10)
           (setf (aref 2d i j) j))
         (loopus:for (k 0 10)
-          (setf (aref 2dd i k) k))) ;; todo when we use j here, the error is weird (hard to understand we use a non-defined variable)
+          (setf (aref 2d i k) k))) ;; todo when we use j here, the error is weird (hard to understand we use a non-defined variable)
       (print 1d))
 
 

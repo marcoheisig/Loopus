@@ -103,12 +103,12 @@
   ;; Add parameters from free variables
   (setf *free-variable-to-index* (make-hash-table :test 'equal))
   (loop for i below *size-free-parameters* do
-    (let ((id (isl::make-gensym-identifier 'free-variable)))
+    (let ((id (isl:make-gensym-identifier 'free-variable)))
       (setf (gethash (symbol-name (isl:identifier-name id)) *free-variable-to-index*) i)
-      (setf *space-domain* (isl::space-add-param-id *space-domain* id))
-      (setf *space-range* (isl::space-add-param-id *space-range* id))
-      (setf *space-map-domain-range* (isl::space-add-param-id *space-map-domain-range* id))
-      (setf *space-map-schedule* (isl::space-add-param-id *space-map-schedule* id))))
+      (setf *space-domain* (isl:space-add-param-id *space-domain* id))
+      (setf *space-range* (isl:space-add-param-id *space-range* id))
+      (setf *space-map-domain-range* (isl:space-add-param-id *space-map-domain-range* id))
+      (setf *space-map-schedule* (isl:space-add-param-id *space-map-schedule* id))))
 
   (setf *construct-to-identifier* nil)
   (setf position-next-free-variable nil)
@@ -160,7 +160,7 @@
       (print (ir-expand r))
       r)))
 
-;; (defun ir-isl-optimize (ir) ir)
+(defun ir-isl-optimize (ir) ir)
 
 ;; utilities - to remove
 (defun ins (e)

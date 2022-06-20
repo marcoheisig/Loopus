@@ -408,5 +408,5 @@
     (map-block-inner-nodes #'update-node (ir-loop-body node))
     ;; No need to restore the hashtable, every node is different ?
     ;; Also it's used in the output part
-    ;;(setf (gethash node *depth-node*) nil)
+    ;;(remhash node *depth-node*)
     ))

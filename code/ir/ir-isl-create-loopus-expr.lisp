@@ -4,7 +4,7 @@
 (defgeneric execute-expr (expr))
 
 ;; Simple integer
-(defmethod execute-expr ((expr isl::int-expr))
+(defmethod execute-expr ((expr isl:int-expr))
   (let* ((v (isl:int-expr-get-value expr))
          (v (isl:value-object v)))
     (let* ((construct (make-instance 'ir-node))
@@ -39,7 +39,7 @@
            answer)))))
 
 ;; Function call
-(defmethod execute-expr ((expr isl::ast-expr))
+(defmethod execute-expr ((expr isl:ast-expr))
   (let* ((answer (make-instance 'ir-value)))
     (make-instance 'ir-call
                    :fnrecord (make-instance 'typo:fnrecord :name (isl:op-expr-get-operator expr) :function #'+) ;;todo place the real function here instead of +

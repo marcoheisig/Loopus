@@ -6,7 +6,7 @@
 ;; The hashtable used by copy-ir-node
 (defparameter *ir-value-copies* nil)
 
-;; Is a list of loop variable in the cl-isl ast. Will be pushed to at each cl-isl-for-node
+;; Is a list of loop variable in the cl-isl ast. New variable are pushed at the END of the list
 (defparameter possible-loop-variables nil)
 
 ;; string of the identifier to ir node - todo do it with identifier instead of strings
@@ -26,10 +26,11 @@
 ;; Now it's with the string of the name
 ;; (Because the lisp object wrapping the identifier changes even if it's the same identifier)
 (defun create-loop-var (loop-variable)
-  (let ((loop-variable (isl::identifier-name (isl::id-expr-get-id loop-variable))))
+  (let ((loop-variable (isl:identifier-name (isl:id-expr-get-id loop-variable))))
     (alexandria:ensure-gethash loop-variable *id-to-nodes* (make-instance 'ir-value))))
 (defun delete-loop-var (loop-variable)
-  (setf (gethash loop-variable *id-to-nodes*) nil))
+  (let ((loop-variable (isl:identifier-name (isl:id-expr-get-id loop-variable))))
+    (remhash loop-variable *id-to-nodes*)))
 
 ;; Entry point of the program. Takes a cl-isl ast, call execute-node on it, and returns a loopus ast
 ;; Sequence of instructions are "block" in the cl-isl ast, and execute-node on a block calls recursively
