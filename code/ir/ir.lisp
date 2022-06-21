@@ -61,8 +61,6 @@
 
 (defgeneric ir-loop-variable (ir-loop))
 
-(defgeneric ir-loop-direction (ir-loop))
-
 
 (defgeneric ir-call-p (object) (:method ((object t)) nil))
 
@@ -103,7 +101,7 @@
 
 (defgeneric map-block-inner-nodes (function ir-node))
 
-(defgeneric map-tree-inner-nodes (function ir-node context))
+(defgeneric compute-max-loop-depth (ir))
 
 (defgeneric insert-ir-node-before (ir-node future-successor))
 
@@ -271,12 +269,7 @@
     :initarg :body
     :initform (alexandria:required-argument :body)
     :type ir-initial-node
-    :reader ir-loop-body)
-   (%direction
-    :initarg :direction
-    :initform :unknown
-    :type (member :ascending :descending :unknown)
-    :reader ir-loop-direction)))
+    :reader ir-loop-body)))
 
 (defmethod shared-initialize :after
     ((ir-loop ir-loop) slot-names &key &allow-other-keys)
@@ -445,21 +438,20 @@
           until (eq node final-node) do
             (funcall function node))))
 
-(defmethod map-tree-inner-nodes (function (node ir-node) context))
-(defmethod map-tree-inner-nodes (function (node ir-loop) context)
-  (apply function (list
-                   (map-tree-inner-nodes function (ir-loop-body node) context))))
-(defmethod map-tree-inner-nodes (function (node ir-if) context)
-  (apply function (list
-                     (map-tree-inner-nodes function (ir-if-then node) context)
-                     (map-tree-inner-nodes function (ir-if-else node) context))))
-(defmethod map-tree-inner-nodes (function (initial-node ir-initial-node) context)
-  (let ((final-node (ir-final-node initial-node)))
-    (apply function
-             (loop for node = (ir-node-successor initial-node)
-                     then (ir-node-successor node)
-                   until (eq node final-node) collect
-                                              (map-tree-inner-nodes function node context)))))
+(defmethod compute-max-loop-depth ((ir ir-loop))
+  (1+ (compute-max-loop-depth (ir-loop-body ir))))
+
+(defmethod compute-max-loop-depth ((ir ir-if))
+  (max (ir-if-else ir) (ir-if-else ir)))
+
+(defmethod compute-max-loop-depth ((ir ir-initial-node))
+  (let ((value 0))
+    (map-block-inner-nodes
+     (lambda (ir) (setf value (max value (compute-max-loop-depth ir))))
+     ir)
+    value))
+
+(defmethod compute-max-loop-depth ((ir ir-node)) 0)
 
 (defmethod insert-ir-node-before
     ((ir-node ir-inner-node)
@@ -518,7 +510,6 @@
     (change-class ir-node 'ir-loop
       :inputs (mapcar (alexandria:curry #'copy-ir-value context) (ir-node-inputs ir-loop))
       :variable variable
-      :direction (ir-loop-direction ir-loop)
       :body (copy-ir-block context (ir-loop-body ir-loop) ir-node))))
 
 (defmethod copy-ir-node (context (ir-call ir-call))

@@ -423,15 +423,23 @@
            (body (make-ir-initial-and-ir-final-node ir-loop))
            (start-value (ir-convert start lexenv))
            (end-value (ir-convert end lexenv))
-           (step-value (ir-convert step lexenv)))
+           (step-value (ir-convert step lexenv))
+           (step-sym (gensym))
+           (end-sym (gensym))
+           (endp nil))
       (ir-value-declare-type variable 'fixnum)
-      (let ((lexenv (augment-lexenv lexenv (list (make-vrecord variable-name variable)) '()))
+      (let ((lexenv (augment-lexenv lexenv (list (make-vrecord step-sym step-value)
+                                                 (make-vrecord end-sym end-value)
+                                                 (make-vrecord variable-name variable)) '()))
             (*blocks* (cons (ir-final-node body) *blocks*)))
+        (setf endp (ir-convert-compound-form 'if `((minusp ,step-sym)
+                                                   (> ,variable ,end-sym)
+                                                   (< ,variable ,end-sym)) lexenv 1))
         (ir-convert body-form lexenv 0))
       (change-class ir-loop 'ir-loop
-        :inputs (list start-value end-value step-value)
-        :variable variable
-        :body body)
+                    :inputs (list start-value endp step-value)
+                    :variable variable
+                    :body body)
       (values))))
 
 (defmethod ir-convert-compound-form

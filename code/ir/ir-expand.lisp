@@ -29,24 +29,10 @@
     (destructuring-bind (start end step) inputs
       (let ((variable (value-name variable))
             (start (value-name start))
-            (end (value-name end))
+            (endp (value-name end))
             (step (value-name step)))
-        (ecase (ir-loop-direction ir-loop)
-          (:ascending
-           `(()
-             (loop for ,variable fixnum from ,start below ,end by ,step do
-                   ,(ir-expand-node (ir-loop-body ir-loop)))))
-          (:descending
-           `(()
-             (loop for ,variable fixnum from ,start above ,end by (abs ,step) do
-                   ,(ir-expand-node (ir-loop-body ir-loop)))))
-          (:unknown
-           `(()
-             (loop for ,variable fixnum = ,start then (+ ,variable ,step)
-                   while (if (plusp ,step)
-                             (< ,variable ,end)
-                             (> ,variable ,end))
-                   do ,(ir-expand-node (ir-loop-body ir-loop))))))))))
+        `(() (loop for ,variable fixnum = ,start then (+ ,variable ,step) until ,endp do
+                   ,(ir-expand-node (ir-loop-body ir-loop))))))))
 
 (defmethod ir-expand-node ((ir-call ir-call))
   (let* ((fnrecord (ir-call-fnrecord ir-call))
