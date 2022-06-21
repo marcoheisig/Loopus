@@ -3,6 +3,8 @@
 ;; First, some variable. Lot of them
 ;; Then, the code
 
+;; todo replace defparameter var nil with defvar without nil
+
 ;; To create points on the domain side
 (defparameter *size-domain* nil)
 ;; Needs to be even. 2 per loop variable
@@ -144,6 +146,7 @@
     ;; Now we have what we wanted
     (isl:basic-set-union-set result)))
 
+;; todo 0 i 0 j 0 instead of 0 i 0 j
 
 
 ;;;;;;;;;;;;;;;

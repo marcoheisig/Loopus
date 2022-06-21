@@ -3,6 +3,7 @@
 ;; todo if ?
 
 
+;; todo remove map tree inner nodes
 ;; Max loop depth
 (defmethod map-tree-inner-nodes (_ (ir ir-node) (context (eql 'depth))) 0)
 (defmethod map-tree-inner-nodes (_ (ir ir-loop) (context (eql 'depth)))
@@ -82,13 +83,13 @@
 (defun ir-isl-optimize (ir)
   "Returns a copy of IR where it's reordered by isl"
 
+  ;; todo let* instead of setf
+
   ;; First, allocate the memory
-  (setf *size-domain* (* 2 (map-tree-inner-nodes #'max ir 'depth)))
   (setf *size-domain* (* 2 (compute-max-loop-depth ir)))
   ;;(ins *size-domain*)
   (setf *space-domain* (isl:create-space-set 0 *size-domain*))
 
-  (setf *size-range* (1+ (map-tree-inner-nodes #'max ir 'arraydimension)))
   (setf *size-range* (1+ (compute-max-array-dimension ir)))
   ;;(ins *size-range*)
   (setf *space-range* (isl:create-space-set 0 *size-range*))
@@ -96,7 +97,6 @@
   (setf *space-map-domain-range* (isl:create-space-map 0 *size-domain* *size-range*))
   (setf *space-map-schedule* (isl:create-space-map 0 *size-domain* *size-domain*))
 
-  (setf *size-free-parameters* (map-tree-inner-nodes #'+ ir 'free-parameters))
   (setf *size-free-parameters* (compute-max-free-variable ir))
   ;;(ins *size-free-parameters*)
 
