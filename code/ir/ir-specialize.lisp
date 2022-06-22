@@ -115,15 +115,3 @@
                    (if (null else-outputs)
                        (typo:universal-ntype)
                        (ir-value-derived-ntype (pop else-outputs))))))))))
-
-(defmethod copy-ir-node
-    ((context (eql 'ir-specialize))
-     (ir-loop ir-loop))
-  (let* ((copy (call-next-method))
-         (step (third (ir-node-inputs copy))))
-    (setf (slot-value copy '%direction)
-          (typo:ntype-subtypecase (ir-value-derived-ntype step)
-            ((integer 1 *) :ascending)
-            ((integer * -1) :descending)
-            (t :unknown)))
-    copy))

@@ -24,15 +24,15 @@
 (defmethod ir-expand-node ((ir-loop ir-loop))
   (with-accessors ((inputs ir-node-inputs)
                    (variable ir-loop-variable)
-                   (directoin ir-loop-direction)
-                   (body ir-loop-body)) ir-loop
-    (destructuring-bind (start end step) inputs
+                   (body ir-loop-body)
+                   (test ir-loop-test)) ir-loop
+    (destructuring-bind (start step) inputs
       (let ((variable (value-name variable))
             (start (value-name start))
-            (endp (value-name end))
             (step (value-name step)))
-        `(() (loop for ,variable fixnum = ,start then (+ ,variable ,step) until ,endp do
-                   ,(ir-expand-node (ir-loop-body ir-loop))))))))
+        `(() (loop for ,variable fixnum = ,start then (+ ,variable ,step)
+                   while ,(ir-expand-node test)
+                   do ,(ir-expand-node body)))))))
 
 (defmethod ir-expand-node ((ir-call ir-call))
   (let* ((fnrecord (ir-call-fnrecord ir-call))

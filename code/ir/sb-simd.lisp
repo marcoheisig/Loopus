@@ -10,8 +10,8 @@
 (defmethod copy-ir-node
     ((context (eql 'ir-vectorize))
      (ir-loop ir-loop))
-  (destructuring-bind (start end step) (ir-node-inputs ir-loop)
-    (declare (ignore start end))
+  (destructuring-bind (start step) (ir-node-inputs ir-loop)
+    (declare (ignore start))
     (when (and (typo:eql-ntype-p (ir-value-derived-ntype step))
                (eql (typo:eql-ntype-object (ir-value-derived-ntype step)) 1))
       (map-block-inner-nodes
@@ -34,9 +34,12 @@
       (change-class ir-node 'ir-simd-loop
         :inputs (mapcar (alexandria:curry #'copy-ir-value context) (ir-node-inputs ir-loop))
         :variable variable
+        :test (copy-ir-block context (ir-loop-test ir-loop) ir-node)
         :body (copy-ir-block context (ir-loop-body ir-loop) ir-node)))))
 
 (defmethod ir-expand-node ((ir-simd-loop ir-simd-loop))
+  (call-next-method)
+  #+(or)
   (destructuring-bind (start end step) (ir-node-inputs ir-simd-loop)
     (declare (ignore step))
     `(()

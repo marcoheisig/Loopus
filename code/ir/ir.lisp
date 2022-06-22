@@ -57,9 +57,11 @@
 
 (defgeneric ir-loop-p (object) (:method ((object t)) nil))
 
-(defgeneric ir-loop-body (ir-loop))
-
 (defgeneric ir-loop-variable (ir-loop))
+
+(defgeneric ir-loop-test (ir-loop))
+
+(defgeneric ir-loop-body (ir-loop))
 
 
 (defgeneric ir-call-p (object) (:method ((object t)) nil))
@@ -254,17 +256,23 @@
                  (member '%successor slot-names)))
     (insert-ir-node-before inner-node *final-node*)))
 
-;;; A loop node is an inner node with three inputs (start, end, and
-;;; step), zero outputs, and a control flow node that marks the beginning
-;;; of its body.  When control is transferred to the loop node, it
-;;; repeatedly evaluates its body in an environment where the loop variable
-;;; is bound to successive elements of the iteration space.
+;;; A loop node is an inner node with two inputs (start and step), zero
+;;; outputs, the initial node of its body, and the initial node of a block
+;;; that test whether the loop should continue.  When control is
+;;; transferred to the loop node, and as long as its test is true, it
+;;; evaluates its body in an environment where the loop variable is bound
+;;; to successive elements of the iteration space.
 (defclass ir-loop (ir-inner-node ir-node-with-inputs)
   ((%variable
     :initarg :variable
     :initform (alexandria:required-argument :variable)
     :type ir-value
     :reader ir-loop-variable)
+   (%test
+    :initarg :test
+    :initform (alexandria:required-argument :test)
+    :type ir-initial-node
+    :reader ir-loop-test)
    (%body
     :initarg :body
     :initform (alexandria:required-argument :body)
@@ -439,7 +447,9 @@
             (funcall function node))))
 
 (defmethod compute-max-loop-depth ((ir ir-loop))
-  (1+ (compute-max-loop-depth (ir-loop-body ir))))
+  (1+
+   (max (compute-max-loop-depth (ir-loop-test ir))
+        (compute-max-loop-depth (ir-loop-body ir)))))
 
 (defmethod compute-max-loop-depth ((ir ir-if))
   (max (ir-if-else ir) (ir-if-else ir)))
@@ -510,6 +520,7 @@
     (change-class ir-node 'ir-loop
       :inputs (mapcar (alexandria:curry #'copy-ir-value context) (ir-node-inputs ir-loop))
       :variable variable
+      :test (copy-ir-block context (ir-loop-test ir-loop) ir-node)
       :body (copy-ir-block context (ir-loop-body ir-loop) ir-node))))
 
 (defmethod copy-ir-node (context (ir-call ir-call))
