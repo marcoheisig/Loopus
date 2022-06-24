@@ -37,7 +37,7 @@
     ;; todo
 
     ;; Index which are an operation
-    #+or(progn
+    (progn
       (print "1d")
       (print 1d)
       (loopus:for (i 0 9)
@@ -52,10 +52,10 @@
 
     ;; Sum over arrays
     ;; 1D
-   #+or(progn
+   (progn
       (print "1d")
       (print 1d)
-      (loopus:for (i v-start v-end)
+      (loopus:for (i 2 v-end) ;; doesn't work anymore with v-start because of step
         (setf (aref 1d i) 2))
       (print 1d)
 
@@ -74,7 +74,7 @@
         (loop for j below 10 do
           (setf (aref 2d i j) 0)))
       (loop for i from 2 below 9 do
-        (loop for j from i below 10 by 2 do
+        (loop for j from 1 below i by 2 do
           (setf (aref 2d j i) (+ i j))))
       (print 2d)
       (loop for i below 10 do
@@ -84,7 +84,7 @@
       ;; if step is not known, the loop direction is unknown, and not sure what I should do
       ;; but the user probably know the loop direction anyway, maybe better to ask him
       (loopus:for (i 2 9)
-        (loopus:for (j i 10 2)
+        (loopus:for (j 1 i 2)
           (setf (aref 2d j i) (+ i j)))
         #+or(loopus:for (j 1 i)
           (setf (aref 2dfefef i j) (+ i j))))
@@ -110,10 +110,10 @@
       (print accumulator))
 ;; todo - reverse on ast generation for proximity
     ;; 3D
-    #+or(progn
+    (progn
       (print "3d")
-      (loopus:for (i 0 8)
-        (loopus:for (j 0 9)
+      (loopus:for (i 0 10)
+        (loopus:for (j 0 10)
           (loopus:for (k 0 10)
             (setf (aref 3d i j k) (+ i j k)))))
       #+or(loopus:for (i 0 10)
