@@ -336,14 +336,14 @@
     ;; For each point of this set, a read/write operation is maybe performed
     ;; We want to add to *map-read/write* the map, for instance, { [0, i] -> A[i, 0] } if A[i, 0] is read
     ;; Will become (when (or "map read can be modified" "map write can be modified"))
-    (when (or is-aref is-setf)
+    (when t ;;(or is-aref is-setf)
       ;; Add the loopus node to the hashtable
       (setf (gethash *global-counter* *id-to-expression*) node)
       ;; Add to *set-domain*
       (push-set *set-domain* current-timestamp)
       ;; Add to *map-read* and/or *map-write*
       ;;todo refactor
-      (let* ((what-is-read/wrote-in-order
+      (when (or is-aref is-setf) (let* ((what-is-read/wrote-in-order
                (if is-aref
                    ;; If it's an aref, just gives what follows aref
                    ;; (aref a b c d e) -> args will be (a b c d e)
@@ -361,7 +361,7 @@
              (map-of-read/write (isl:basic-map-union-map (apply #'create-new-point-range-new what-is-read/wrote-in-order)))
              (map-of-read/write (isl:union-map-intersect-domain map-of-read/write current-timestamp)))
         (when is-aref (push-map *map-read* map-of-read/write))
-        (when is-setf (push-map *map-write* map-of-read/write)))
+        (when is-setf (push-map *map-write* map-of-read/write))))
       ;; Add to *map-schedule*
       (push-map *map-schedule* (create-map-schedule current-timestamp))
       #+or(isl:union-map-intersect-domain
@@ -416,11 +416,10 @@
          (end (parse-end-bound
                (ir-node-predecessor (ir-final-node (ir-loop-test node)))
                (ir-loop-variable node)))
-         ;; todo step too ?
          (*loop-bounds* (cons (list start end step inputs) *loop-bounds*)))
     ;; Recursive call
     (map-block-inner-nodes #'update-node (ir-loop-body node))
     ;; No need to restore the hashtable, every node is different ?
-    ;; Also it's used in the output part
+    ;; Also it's used in the output part, so removing the hash will break it
     ;;(remhash node *depth-node*)
     ))

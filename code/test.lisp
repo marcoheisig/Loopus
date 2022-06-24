@@ -110,7 +110,7 @@
       (print accumulator))
 ;; todo - reverse on ast generation for proximity
     ;; 3D
-    (progn
+    #+or(progn
       (print "3d")
       (loopus:for (i 0 10)
         (loopus:for (j 0 10)
@@ -168,7 +168,13 @@
 
 
 
-;; (loopus:for (i 0 10) (print i))
+(defparameter *a* 0)
+
+(defun mm (arg) arg)
+
+(loopus:for (i 0 10) (print (mm i)))
+
+(print *a*)
 
 
 

@@ -59,13 +59,15 @@
                           (r (loop for e in old-code collect (copy-ir-node 'output e)))
                           (_ (setf *depth-loop-variables* cp)))
                      r))
+         (old-code-2 (ir-node-outputs old-node))
+         (abc (copy-ir-value nil (first old-code-2)))
+         (_ (ins abc))
          )
-    (let ((c (make-instance 'ir-call
-                            :fnrecord (ir-call-fnrecord old-node)
-                            :inputs old-code
-                            :outputs nil;;(ir-node-outputs old-node)
-                            )))
-      c)))
+    (make-instance 'ir-call
+                  :fnrecord (ir-call-fnrecord old-node)
+                  :inputs old-code
+                  :outputs (list abc)
+                  )))
 
 ;; A block is a sequence of instructions
 ;; Todo lexical scope ?
