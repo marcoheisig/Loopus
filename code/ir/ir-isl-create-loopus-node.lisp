@@ -68,29 +68,13 @@
       c)))
 
 ;; A block is a sequence of instructions
+;; Todo lexical scope ?
 (defmethod execute-node ((node isl:block-node))
   (mapcar #'execute-node
           (isl:ast-node-list-elements (isl:block-node-getlist node))))
 
 ;; End of execute-node
 ;; Now some utilities
-
-;; To create the end value of a loop. Depending on if it's "<" or "<=" we may need to add 1 to the end (because loopus is "<" only)
-;; Also do some assertion because we don't support every loop possible
-(defun create-end-value (end-condition variable)
-  (let* ((_ (assert (= 2 (isl:op-expr-get-n-arg end-condition))))
-         (a (isl:op-expr-get-op-arg end-condition 0))
-         (b (isl:op-expr-get-op-arg end-condition 1))
-         (_ (assert (isl:ast-expr-equal-p a variable))))
-    (cond
-      ((isl:op-le-p end-condition) (execute-expr (isl:create-ast-expr-from-add
-                                                   (isl:create-ast-expr-from-val (isl:value 1)) b)))
-      ((isl:op-lt-p end-condition) (execute-expr b))
-      ;; Not sure what to do
-      ;; isl:op-ge-p
-      ;; isl:op-gt-p
-      (t (break "~a not supported yet for end conditon of loop" end-condition)))))
-
 
 ;; To copy loopus things
 ;; Todo rewrite them

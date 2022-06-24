@@ -124,23 +124,29 @@
              (start-value (first bounds))
              (end-value (second bounds))
              (step-value (third bounds))
+             (inputs (nth 3 bounds))
              ;; Creation of the step
              (aff (isl:create-var-affine local-space-domain :dim-set p))
              ;; todo general case
-             (_ (assert (integerp start-value)))
+             ;;(_ (assert (integerp start-value)))
+             ;; if step is not known, the loop direction is unknown, and not sure what I should do
+             ;; but the user probably know the loop direction anyway, maybe better to ask him
              (_ (assert (integerp step-value)))
              (aff (isl:affine-mul aff (isl:create-val-affine local-space-domain (isl:value step-value))))
-             (aff (isl:affine-add aff (isl:create-val-affine local-space-domain (isl:value start-value))))
+             (aff (isl:affine-add aff (affine-expression-from-loopus-ast (first inputs) local-space-domain)))
              (affmap (isl:basic-map-from-affine aff))
+             (_ (ins affmap))
              (affmap (isl:basic-map-insert-dimension affmap :dim-out 0 p))
              ;; size domain or current depth?
              (affmap (isl:basic-map-insert-dimension affmap :dim-out (1+ p) (- (1- *size-domain*) p)))
+             (_ (ins affmap))
              (_ (setf result (isl:basic-set-intersect result (isl::basic-set-apply result affmap))))
              ;; Creation of [*, i] : start <= i
              (constraint (isl:make-inequality-constraint local-space-domain))
              (constraint (add-constant-constraint constraint start-value -1 0))
              (constraint (isl:inequality-constraint-set-coefficient constraint :dim-set p (isl:value 1)))
              (_ (setf result (isl:basic-set-add-constraint result constraint)))
+             (_ (ins result))
              ;; Creation of [*, i] : start <= i < end
              (constraint (isl:make-inequality-constraint local-space-domain))
              (constraint (add-constant-constraint constraint end-value 1 -1))
@@ -455,7 +461,7 @@
                (ir-node-predecessor (ir-final-node (ir-loop-test node)))
                (ir-loop-variable node)))
          ;; todo step too ?
-         (*loop-bounds* (cons (list start end step) *loop-bounds*)))
+         (*loop-bounds* (cons (list start end step inputs) *loop-bounds*)))
     ;; Recursive call
     (map-block-inner-nodes #'update-node (ir-loop-body node))
     ;; No need to restore the hashtable, every node is different ?
