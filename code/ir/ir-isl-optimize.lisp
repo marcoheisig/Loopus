@@ -7,7 +7,9 @@
 (defmethod compute-max-array-dimension ((ir ir-loop))
   (compute-max-array-dimension (ir-loop-body ir)))
 (defmethod compute-max-array-dimension ((ir ir-if))
-  (max (ir-if-else ir) (ir-if-else ir)))
+  (max
+   (compute-max-array-dimension (ir-if-else ir))
+   (compute-max-array-dimension (ir-if-else ir))))
 ;; todo refactor this and the update-node on ir-call in input.lisp
 (defmethod compute-max-array-dimension ((ir ir-call))
   (let ((args (ir-node-inputs ir))
@@ -31,7 +33,8 @@
 (defmethod compute-max-free-variable ((ir ir-loop))
   (compute-max-free-variable (ir-loop-body ir)))
 (defmethod compute-max-free-variable ((ir ir-if))
-  (+ (ir-if-else ir) (ir-if-else ir)))
+  (+ (compute-map-free-variable (ir-if-else ir))
+     (compute-map-free-variable (ir-if-else ir))))
 (defmethod compute-max-free-variable ((ir ir-initial-node))
   (let ((value 0))
     (map-block-inner-nodes

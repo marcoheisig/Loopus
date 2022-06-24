@@ -9,36 +9,32 @@
          (variable-isl (isl:for-node-get-iterator node))
          (possible-loop-variables (append possible-loop-variables (list (isl:id-expr-get-id variable-isl))))
          (start-value (isl:for-node-get-init node))
-         (end-condition (isl:for-node-get-cond node))
+         (test-ast (isl:for-node-get-cond node))
          (increment (isl:for-node-get-inc node))
-         (body (isl:for-node-get-body node))
+         (body-ast (isl:for-node-get-body node))
          ;; Generation of the nodes
          (start (execute-expr start-value))
-         (end (create-end-value end-condition variable-isl))
          (step (execute-expr increment))
          (variable (create-loop-var variable-isl))
-         ;;(_ (ins2 variable variable-isl *id-to-nodes* possible-loop-variables))
-         (loop-node (make-instance 'ir-node)))
-    (change-class loop-node 'ir-loop
-                  :variable variable
-                  :inputs (list start end step)
-                  :direction (if (eql (type-of increment) 'isl:int-expr)
-                                 (let ((value (isl:value-object (isl:int-expr-get-value increment))))
-                                   (if (> value 0) :ascending
-                                       (if (< value 0) :descending
-                                           :unknown)))
-                                 :unknown)
-                  :body (make-instance 'ir-initial-node :dominator loop-node))
-    (setf (slot-value variable '%producer) loop-node)
+         (loop (make-instance 'ir-node))
+         (body (make-ir-initial-and-ir-final-node loop))
+         (test (make-ir-initial-and-ir-final-node loop)))
+    (let ((*blocks* (cons (ir-final-node test) *blocks*)))
+      (execute-expr test-ast))
     (let ((*depth-loop-variables* (cons variable *depth-loop-variables*))
-          (_ (setf (gethash node *ir-value-copies*) variable))
-          (*current-depth* (1+ *current-depth*)))
-      ;; Recursion
-      (setf (slot-value loop-node '%body) (my-main body loop-node))
-      ;; Restore state before we leave the loop
-      (setf *ir-value-copies* old-hashtable)
-      (delete-loop-var variable-isl)
-      loop-node)))
+          (*current-depth* (1+ *current-depth*))
+          (*blocks* (cons (ir-final-node body) *blocks*)))
+      (setf (gethash node *ir-value-copies*) variable)
+      (execute-node body-ast))
+    (change-class loop 'ir-loop
+                  :variable variable
+                  :inputs (list start step)
+                  :test test
+                  :body body)
+    ;; Restore state before we leave the loop
+    (setf *ir-value-copies* old-hashtable)
+    (delete-loop-var variable-isl)
+    loop))
 
 ;; A single statement
 (defmethod execute-node ((node isl:user-node))
@@ -53,7 +49,7 @@
          (old-code (ir-node-inputs old-node))
          (idx (mapcar (lambda (c)
                         (position (isl:id-expr-get-id c)
-                         possible-loop-variables))
+                                  possible-loop-variables))
                       (cdr args)))
          (old-code (let* ((cp *depth-loop-variables*)
                           ;; todo refactor this

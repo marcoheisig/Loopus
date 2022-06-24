@@ -37,7 +37,7 @@
     ;; todo
 
     ;; Index which are an operation
-    (progn
+    #+or(progn
       (print "1d")
       (print 1d)
       (loopus:for (i 0 9)
@@ -45,13 +45,14 @@
         (loopus:for (j 0 10)
           (setf (aref 2d i j) j))
         (loopus:for (k 0 10)
-          (setf (aref 2d i k) k))) ;; todo when we use j here, the error is weird (hard to understand we use a non-defined variable)
+          (setf (aref 2d i k) k)))
+      ;; todo when we use j here, the error is weird (hard to understand we use a non-defined variable)
       (print 1d))
 
 
     ;; Sum over arrays
     ;; 1D
-   (progn
+   #+or(progn
       (print "1d")
       (print 1d)
       (loopus:for (i v-start v-end)
@@ -72,18 +73,23 @@
       (loop for i below 10 do
         (loop for j below 10 do
           (setf (aref 2d i j) 0)))
-      (loop for i from 2 below 9 do
+      (loop for i from 2 below 9 by 2 do
         (loop for j from 1 below i do
           (setf (aref 2d j i) (+ i j))))
       (print 2d)
       (loop for i below 10 do
         (loop for j below 10 do
           (setf (aref 2d i j) 0)))
-      (loopus:for (i 2 9)
-        #+or(loopus:for (j 1 i)
-          (setf (aref 2d j i) (+ i j)))
+      ;; todo
+      (loopus:for (i 2 9 2)
         (loopus:for (j 1 i)
-          (setf (aref 2d j i) (+ i j))))
+          (setf (aref 2d j i) (+ i j)))
+        #+or(loopus:for (j 1 i)
+          (setf (aref 2dfefef i j) (+ i j))))
+       #+or(loopus:for (i 2 9)
+         (loopus:for (j 1 i)
+           (setf (row-major-aref 2d (+ (* j (array-dimension 2d 1)) i))
+                 (+ i j))))
       (print 2d)
       #+or(loopus:for (i 5 10)
         (loopus:for (j 5 10)
@@ -160,4 +166,8 @@
 
 
 
-(loopus:for (i 0 10) (print i))
+;; (loopus:for (i 0 10) (print i))
+
+
+
+

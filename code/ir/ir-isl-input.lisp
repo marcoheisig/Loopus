@@ -104,16 +104,16 @@
                   (break "can't happen")))))))
 
 (defvar *counter-domain*) ; List of counters
-(defvar *global-counter*) ; Global counter to rememeber which 
+(defvar *global-counter*) ; Global counter to rememeber which is what instruction
 (defun create-new-point-domain ()
   ;; The structure we want to have: see commentary above. Start from universe, and create each part
   (let* ((result (isl:basic-set-universe *space-domain*))
-         (*space-domain* (isl:local-space-from-space *space-domain*)))
+         (local-space-domain (isl:local-space-from-space *space-domain*)))
     ;; Part for each loop var
     (loop for p below (* 2 *current-depth*) by 2 do
       ;; First, the creation of the global counter, and then the loop variable
       (let* (;; Creation of the counter
-             (constraint (isl:make-equality-constraint *space-domain*))
+             (constraint (isl:make-equality-constraint local-space-domain))
              (constraint (isl:equality-constraint-set-constant constraint (isl:value (nth (/ p 2) *counter-domain*))))
              (constraint (isl:equality-constraint-set-coefficient constraint :dim-set p (isl:value -1)))
              (_ (setf result (isl:basic-set-add-constraint result constraint)))
@@ -123,27 +123,47 @@
              ;; The variable at the very left is the outer loop, so it's the good order
              (start-value (first bounds))
              (end-value (second bounds))
-             (constraint (isl:make-inequality-constraint *space-domain*))
+             (step-value (third bounds))
+             ;; Creation of the step
+             (aff (isl:create-var-affine local-space-domain :dim-set p))
+             ;; todo general case
+             (_ (assert (integerp start-value)))
+             (_ (assert (integerp step-value)))
+             (aff (isl:affine-mul aff (isl:create-val-affine local-space-domain (isl:value step-value))))
+             (aff (isl:affine-add aff (isl:create-val-affine local-space-domain (isl:value start-value))))
+             (affmap (isl:basic-map-from-affine aff))
+             (affmap (isl:basic-map-insert-dimension affmap :dim-out 0 p))
+             ;; size domain or current depth?
+             (affmap (isl:basic-map-insert-dimension affmap :dim-out (1+ p) (- (1- *size-domain*) p)))
+             (_ (setf result (isl:basic-set-intersect result (isl::basic-set-apply result affmap))))
+             ;; Creation of [*, i] : start <= i
+             (constraint (isl:make-inequality-constraint local-space-domain))
              (constraint (add-constant-constraint constraint start-value -1 0))
              (constraint (isl:inequality-constraint-set-coefficient constraint :dim-set p (isl:value 1)))
              (_ (setf result (isl:basic-set-add-constraint result constraint)))
-             ;; Creation of [*, i] : start <= i
-             (constraint (isl:make-inequality-constraint *space-domain*))
+             ;; Creation of [*, i] : start <= i < end
+             (constraint (isl:make-inequality-constraint local-space-domain))
              (constraint (add-constant-constraint constraint end-value 1 -1))
              (constraint (isl:inequality-constraint-set-coefficient constraint :dim-set p (isl:value -1)))
-             ;; Creation of [*, i] : start <= i < end
+             (_ (setf result (isl:basic-set-add-constraint result constraint)))
+             ;(_ (ins affmap))
+             ;(_ (ins result))
+             ;(_ (ins "apply"))
+             ;(_ (ins (isl::basic-set-apply result affmap)))
+             ;(_ (isl::basic-map-intersect-range affmap result))
              ;; The "<" comes from the -1 in add-constant-constraint. We actually create i <= end - 1
              ;; End of this iteration: [*counter-domain*, i for one more variable] : start <= i < end
-             (_ (setf result (isl:basic-set-add-constraint result constraint))))))
+             ;; Todo check if we can refactor the 2 comments above
+             )))
     ;; Last counter
-    (let* ((constraint (isl:make-equality-constraint *space-domain*))
+    (let* ((constraint (isl:make-equality-constraint local-space-domain))
            (constraint (isl:equality-constraint-set-constant constraint (isl:value *global-counter*)))
            (constraint (isl:equality-constraint-set-coefficient constraint :dim-set (* 2 *current-depth*) (isl:value -1)))
            (_ (setf result (isl:basic-set-add-constraint result constraint))))
       ;; Now we have [*counter-domain*, i, ...]
       ;; Part to fill the rest
       (loop for p from (1+ (* 2 *current-depth*)) below *size-domain* do
-        (let* ((constraint (isl:make-equality-constraint *space-domain*))
+        (let* ((constraint (isl:make-equality-constraint local-space-domain))
                (constraint (isl:equality-constraint-set-constant constraint (isl:value -1)))
                (constraint (isl:equality-constraint-set-coefficient constraint :dim-set p (isl:value -1)))
                (_ (setf result (isl:basic-set-add-constraint result constraint))))))
@@ -395,6 +415,28 @@
       value)) ;;todo
 ;;      (ir-construct-form (ir-value-producer value))))
 
+(defun parse-end-bound (value variable)
+  ;; We only do something (now) when the loop is know
+  ;; otherwise todo loop end is a free variable
+  (assert (= (length (ir-node-inputs value)) 1))
+  ;; otherwise, the return value is the node just before the final node
+  (let* ((boolean (typo:eql-ntype-object (ir-value-derived-ntype (first (ir-node-inputs value)))))
+         (branch-taken (if boolean (ir-then value) (ir-if-else value)))
+         (ir-call (ir-node-predecessor (ir-final-node branch-taken)))
+         ;; ..................
+         (ir-call (ir-value-producer (second (ir-node-inputs ir-call))))
+         (_ (assert (= 2 (length (ir-node-inputs ir-call)))))
+         (f (typo:fnrecord-name (ir-call-fnrecord ir-call)))
+         (a (first (ir-node-inputs ir-call)))
+         (b (second (ir-node-inputs ir-call))))
+    (cond
+      ((and (eql a variable) (eql f '<)) (parse-bound b))
+      ((and (eql a variable) (eql f '<=)) (parse-bound (1+ b)))
+      ;; a > variable --> the end is a
+      ((and (eql b variable) (eql f '>)) (parse-bound a))
+      ((and (eql b variable) (eql f '>=)) (parse-bound (1+ a)))
+      (t (break "We cannot optimize this loop for now")))))
+
 ;; Todo handle lexical scope
 (defmethod update-node ((node ir-loop))
   ;; First, we add informations (the current loop variable, the depth, etc...)
@@ -408,9 +450,12 @@
          ;; Loop bounds
          (inputs (ir-node-inputs node))
          (start (parse-bound (first inputs)))
-         (end (parse-bound (second inputs)))
+         (step (parse-bound (second inputs)))
+         (end (parse-end-bound
+               (ir-node-predecessor (ir-final-node (ir-loop-test node)))
+               (ir-loop-variable node)))
          ;; todo step too ?
-         (*loop-bounds* (cons (list start end) *loop-bounds*)))
+         (*loop-bounds* (cons (list start end step) *loop-bounds*)))
     ;; Recursive call
     (map-block-inner-nodes #'update-node (ir-loop-body node))
     ;; No need to restore the hashtable, every node is different ?

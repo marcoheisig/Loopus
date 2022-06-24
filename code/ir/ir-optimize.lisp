@@ -3,7 +3,6 @@
 ;; Nothing
 (defun ir-optimize (ir)  ir)
 
-#|
 ;; No isl
 ;; No common sub expression. Specialize makes (aref array idx) pure and
 ;; sub expression delete it
@@ -12,10 +11,12 @@
    (ir-remove-dead-code
     (ir-specialize ir))))
 
+;; deadcode not working for now
+
 ;; Isl
 (defun ir-optimize (ir)
-  (ir-vectorize
+;  (ir-vectorize
    (ir-isl-optimize
-    (ir-remove-dead-code
-     (ir-specialize ir)))))
-|#
+   ;;(ir-remove-dead-code
+     (ir-specialize ir)))
+

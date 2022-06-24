@@ -452,7 +452,9 @@
         (compute-max-loop-depth (ir-loop-body ir)))))
 
 (defmethod compute-max-loop-depth ((ir ir-if))
-  (max (ir-if-else ir) (ir-if-else ir)))
+  (max
+   (compute-max-loop-depth (ir-if-else ir))
+   (compute-max-loop-depth (ir-if-else ir))))
 
 (defmethod compute-max-loop-depth ((ir ir-initial-node))
   (let ((value 0))

@@ -10,7 +10,8 @@
     (let* ((construct (make-instance 'ir-node))
            (answer (make-instance 'ir-value
                                   :declared-type `(eql ,v)
-                                  )))
+                                  :derived-ntype (typo:ntype-of v)))
+           (*blocks* (last *blocks*)))
       (change-class construct 'ir-construct
                     :form `',v
                     :outputs (list answer))
@@ -32,7 +33,8 @@
                 (answer (make-instance 'ir-value
                                        ;;:declared-type v;;v ;;??
                                        ;;:derived-ntype nil;;v ;;??
-                                       )))
+                                       ))
+                (*blocks* (last *blocks*)))
            (change-class construct 'ir-construct
                          :form value
                          :outputs (list answer))
@@ -43,6 +45,6 @@
   (let* ((answer (make-instance 'ir-value)))
     (make-instance 'ir-call
                    :fnrecord (make-instance 'typo:fnrecord :name (isl:op-expr-get-operator expr) :function #'+) ;;todo place the real function here instead of +
-                   :inputs  (mapcar #'execute-expr (isl:op-expr-get-list-args expr))
+                   :inputs (mapcar #'execute-expr (isl:op-expr-get-list-args expr))
                    :outputs (list answer))
     answer))
