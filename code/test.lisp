@@ -199,14 +199,23 @@
 (defun print3 (a b)
   (setf a b))
 
-(progn
+#+or(progn
   (defun mm (arg) (1+ arg))
-  (let ((2d (make-array '(10 10))))
-    (loopus:for (i 0 10)
+  (let ((2d (make-array '(10 10)))
+        (ss 1))
+    (loopus:for (i ss 10)
       (loopus:for (j 0 10)
         (setf (row-major-aref 2d (+ (* j 10) i)) (+ j (* 10 i)))))
     ;; (loop for i below 10 do (loop for j below 10 do (setf (aref 2d i j) (+ i (* 10 j)))))
-    (loop for i below 10 do
-      (loop for j below 10 do
+    (loop for i from 0 below 10 do
+      (loop for j from 1 below 10 do
         (print (aref 2d j i))))
     (print "--")))
+
+
+(let ((start 2)
+      (end 10)
+      (step 2))
+  (loopus:for (i start end)
+    (loopus:for (j 0 i)
+      (print j))))

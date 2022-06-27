@@ -130,12 +130,14 @@
              ;; todo general case
              ;; if the startvalue isn't an integer then apply-set doesn't work anymore
              ;; (gives the universe). Todo add constraint i1 = o1 for all 1?
-             (_ (assert (integerp start-value)))
+             ;;(_ (assert (integerp start-value)))
              ;; if step is not known, the loop direction is unknown, and not sure what I should do
              ;; but the user probably know the loop direction anyway, maybe better to ask him
              (_ (assert (integerp step-value)))
              (aff (isl:affine-mul aff (isl:create-val-affine local-space-domain (isl:value step-value))))
-             (aff (isl:affine-add aff (isl:create-val-affine local-space-domain (isl:value start-value))))
+             (aff (isl:affine-add aff
+                                  (affine-expression-from-loopus-ast (first inputs) local-space-domain)))
+                                  ;;(isl:create-val-affine local-space-domain (isl:value start-value))))
              (affmap (isl:basic-map-from-affine aff))
              (affmap (isl:basic-map-insert-dimension affmap :dim-out 0 p))
              ;; size domain or current depth?
@@ -208,7 +210,7 @@
             ;; Loop variable
             (isl:create-var-affine local-space :dim-set (1+ (* 2 pos-variable)))
             ;; Integer
-            (if (integerp (second (ir-value-derived-type ast)))
+            (if (and (listp (ir-value-derived-type ast)) (integerp (second (ir-value-derived-type ast))))
                 (isl:create-val-affine local-space (isl:value (second (ir-value-derived-type ast))))
                 ;; Free variable
                 (let ((idx-free-variable
@@ -335,15 +337,13 @@
 (defmethod update-node ((node ir-call))
   (let* ((function-call node)
          (args (ir-node-inputs node))
-         ;; for now can-read/write is only aref/setf
          (can-read (or
                     (eql 'row-major-aref (typo:fnrecord-name (ir-call-fnrecord node)))
                     (eql 'aref (typo:fnrecord-name (ir-call-fnrecord node)))))
          (can-write (or
-                     ;;(eql 'print (typo:fnrecord-name (ir-call-fnrecord node)))
                      (equal '(setf aref) (typo:fnrecord-name (ir-call-fnrecord node)))
                      (eql 'sb-kernel:%set-row-major-aref (typo:fnrecord-name (ir-call-fnrecord node)))))
-         (has-side-effect (eql 'print3 (typo:fnrecord-name (ir-call-fnrecord node))))
+         (has-side-effect (eql 'print (typo:fnrecord-name (ir-call-fnrecord node))))
          (is-final (not (ir-node-outputs node))) ;; iif no outputs
          (current-timestamp (create-new-point-domain)))
     (alexandria:ensure-gethash node *node-to-read* (isl:union-map-empty *space-map-domain-range*))

@@ -41,9 +41,8 @@
   (let* ((node (isl:user-node-get-expr node))
          (how-many-args (isl:op-expr-get-n-arg node))
          ;; We go 2 go because we have a counter between each loop variable in the domain
-         (args (loop for i from 0 below how-many-args by 2 collect (isl:op-expr-get-op-arg node i)))
+         ;; (The 1st one is empty, and we have a counter before/after each loop variable, hence the start at 2)
          (real-args (loop for i from 2 below how-many-args by 2 collect (execute-expr (isl:op-expr-get-op-arg node i))))
-         (_ (ins real-args))
          (counter-value (isl:value-object
                          (isl:int-expr-get-value
                           (isl:op-expr-get-op-arg node (1- how-many-args)))))
@@ -51,19 +50,9 @@
          (old-code (ir-node-inputs old-node))
          ;; old-code is the arguments of the call
          ;; We now want to replace each argument by the new value from real-args!
-         (_ (ins old-code))
-         #+or(idx (mapcar (lambda (c)
-                        (position (isl:id-expr-get-id c)
-                                  possible-loop-variables))
-                      (cdr args)))
-         (old-code (let* ((cp *depth-loop-variables*)
-                          ;; todo refactor this
-                          (_ (setf *depth-loop-variables* real-args))
-                                   ;;(reverse (loop for e in idx collect (nth e (reverse *depth-loop-variables*))))))
-                          (r (loop for e in old-code collect (copy-ir-node 'output e)))
-                          (_ (setf *depth-loop-variables* cp)))
-                     r))
-         )
+         ;; todo check if what we do is correct
+         (old-code (let* ((*depth-loop-variables* real-args))
+                          (loop for e in old-code collect (copy-ir-node 'output e)))))
     (make-instance 'ir-call
                   :fnrecord (ir-call-fnrecord old-node)
                   :inputs old-code
