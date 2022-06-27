@@ -130,6 +130,7 @@
              ;; todo general case
              ;; if the startvalue isn't an integer then apply-set doesn't work anymore
              ;; (gives the universe). Todo add constraint i1 = o1 for all 1?
+             ;; ?? or no ? todo check
              ;;(_ (assert (integerp start-value)))
              ;; if step is not known, the loop direction is unknown, and not sure what I should do
              ;; but the user probably know the loop direction anyway, maybe better to ask him
@@ -322,6 +323,8 @@
          ;;(1+ ,v)))
          (* (+ 1 ,v) 2)))
 ;; todo when it packs loop, instead of 0, c, 0, c, 0 it does 0, c, 0, c, c
+;; the problem is the last value becomes a loop variable, so it's just annoying to unroll instruction by hand
+;; for instance if there are 2 consecutive loop, need to parse the end value of the loop (it can be an expression, depend on parameters, ... :/)
 
 (defvar *id-to-expression*) ; int -> loopus node
 (defvar *depth-node*) ; loopus for node -> depth

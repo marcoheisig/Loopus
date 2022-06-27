@@ -218,4 +218,5 @@
       (step 2))
   (loopus:for (i start end)
     (loopus:for (j 0 i)
-      (print j))))
+      (print j)
+      (print i))))
