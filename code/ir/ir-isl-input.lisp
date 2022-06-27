@@ -207,16 +207,16 @@
         (if pos-variable
             ;; Loop variable
             (isl:create-var-affine local-space :dim-set (1+ (* 2 pos-variable)))
-            (let ((idx-free-variable
-                    (alexandria:ensure-gethash
-                     (ir-construct-form (ir-value-producer ast))
-                     *construct-to-identifier*
-                     (incf position-next-free-variable))))
-              (if idx-free-variable
-                  ;; Free variable
-                  (isl:create-var-affine local-space :dim-param idx-free-variable)
-                  ;; Generic construct form
-                  (isl:create-val-affine local-space (isl:value (second (ir-value-derived-type ast))))))))))
+            ;; Integer
+            (if (integerp (second (ir-value-derived-type ast)))
+                (isl:create-val-affine local-space (isl:value (second (ir-value-derived-type ast))))
+                ;; Free variable
+                (let ((idx-free-variable
+                        (alexandria:ensure-gethash
+                         (ir-construct-form (ir-value-producer ast))
+                         *construct-to-identifier*
+                         (incf position-next-free-variable))))
+                      (isl:create-var-affine local-space :dim-param idx-free-variable)))))))
 
 (defun get-value (node)
   (let* ((producer (ir-value-producer node)))
@@ -336,22 +336,30 @@
   (let* ((function-call node)
          (args (ir-node-inputs node))
          ;; for now can-read/write is only aref/setf
-         (can-read (eql 'aref (typo:fnrecord-name (ir-call-fnrecord node))))
-         (can-write (equal '(setf aref) (typo:fnrecord-name (ir-call-fnrecord node))))
+         (can-read (or
+                    (eql 'row-major-aref (typo:fnrecord-name (ir-call-fnrecord node)))
+                    (eql 'aref (typo:fnrecord-name (ir-call-fnrecord node)))))
+         (can-write (or
+                     ;;(eql 'print (typo:fnrecord-name (ir-call-fnrecord node)))
+                     (equal '(setf aref) (typo:fnrecord-name (ir-call-fnrecord node)))
+                     (eql 'sb-kernel:%set-row-major-aref (typo:fnrecord-name (ir-call-fnrecord node)))))
+         (has-side-effect (eql 'print3 (typo:fnrecord-name (ir-call-fnrecord node))))
+         (is-final (not (ir-node-outputs node))) ;; iif no outputs
          (current-timestamp (create-new-point-domain)))
-    ;;(ins *node-to-read*)
-    ;;(ins node)
+    (alexandria:ensure-gethash node *node-to-read* (isl:union-map-empty *space-map-domain-range*))
+    (alexandria:ensure-gethash node *node-to-write* (isl:union-map-empty *space-map-domain-range*))
     ;; Current timestamp is the set of timestamp corresponding to this single instruction
     ;; If it's a instructon outisde a loop, the set will only have a single element
     ;; Otherwise if it's in a "i" loop, it'd be for instance { [0, i]: start <= i < end }
     ;; For each point of this set, a read/write operation is maybe performed
     ;; We want to add to *map-read/write* the map, for instance, { [0, i] -> A[i, 0] } if A[i, 0] is read
     ;; Will become (when (or "map read can be modified" "map write can be modified"))
-    (when t ;;(or can-read can-write)
-      ;; Add the loopus node to the hashtable
-      (setf (gethash *global-counter* *id-to-expression*) node)
-      ;; Add to *set-domain*
-      (push-set *set-domain* current-timestamp)
+    (when (or has-side-effect can-read can-write)
+      (when is-final
+        ;; Add the loopus node to the hashtable
+        (setf (gethash *global-counter* *id-to-expression*) node)
+        ;; Add to *set-domain*
+        (push-set *set-domain* current-timestamp))
       ;; Add to *map-read* and/or *map-write*
       ;;todo refactor
       (when (or can-read can-write)
@@ -373,26 +381,28 @@
                (full-map-of-read/write (isl:basic-map-union-map (apply #'create-new-point-range-new what-is-read/wrote-in-order)))
                (map-of-read/write (isl:union-map-intersect-domain full-map-of-read/write current-timestamp)))
           (when can-read
-            (setf (gethash node *node-to-read*) full-map-of-read/write)
-            (push-map *map-read* map-of-read/write))
+            (push-map (gethash node *node-to-read*) full-map-of-read/write)
+            (when is-final
+              (push-map *map-read* map-of-read/write)))
           (when can-write
-            (setf (gethash node *node-to-write*) full-map-of-read/write)
-            (push-map *map-write* map-of-read/write))))
+            (push-map (gethash node *node-to-write*) full-map-of-read/write)
+            (when is-final
+              (push-map *map-write* map-of-read/write)))))
       ;; Add read/write subexpression
-      
-      (loop for node in args do
-        (let* ((node (ir-value-producer node))
-               (read (gethash node *node-to-read*))
-               (write (gethash node *node-to-write*)))
-          (when read (push-map *map-read* (isl:union-map-intersect-domain read current-timestamp)))
-          (when write (push-map *map-write* (isl:union-map-intersect-domain write current-timestamp)))))
-      
-      ;; Add to *map-schedule*
-      (push-map *map-schedule* (create-map-schedule current-timestamp))
-      #+or(isl:union-map-intersect-domain
-           (create-map-schedule *loop-variables*)
-           current-timestamp)
-      (my-incf *global-counter*))))
+      ;; Todo think about what to do with this
+      (when is-final
+        (loop for node in args do
+          (let* ((node (ir-value-producer node))
+                 (read (gethash node *node-to-read*))
+                 (write (gethash node *node-to-write*)))
+            (when read (push-map *map-read* (isl:union-map-intersect-domain read current-timestamp)))
+            (when write (push-map *map-write* (isl:union-map-intersect-domain write current-timestamp)))))
+        ;; Add to *map-schedule*
+        (push-map *map-schedule* (create-map-schedule current-timestamp))
+        #+or(isl:union-map-intersect-domain
+             (create-map-schedule *loop-variables*)
+             current-timestamp)
+        (my-incf *global-counter*)))))
 
 ;; todo
 (defun parse-bound (value)

@@ -56,7 +56,7 @@
   (let* ((*size-domain* (1+ (* 2 (compute-max-loop-depth ir))))
          ;;(ins *size-domain*)
          (*space-domain* (isl:create-space-set 0 *size-domain*))
-         (*size-range* (1+ (compute-max-array-dimension ir)))
+         (*size-range* 2) ;; (1+ (compute-max-array-dimension ir)))
          ;;(ins *size-range*)
          (*space-range* (isl:create-space-set 0 *size-range*))
          (*space-map-domain-range* (isl:create-space-map 0 *size-domain* *size-range*))

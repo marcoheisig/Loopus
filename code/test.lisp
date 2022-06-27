@@ -1,7 +1,7 @@
 (in-package :loopus.ir)
 
 (declaim (optimize (debug 3)))
-
+#|
 (macrolet ((acc (v) `(setf (aref accumulator 0) (+ (aref accumulator 0) ,v))))
   (let* ((dim 10)
          (v-start 2)
@@ -166,8 +166,8 @@
     ;; End
     ))
 
-
-
+|#
+#|
 ;; Test of expressions that aren't a read/write
 (progn
   (defun mm (arg) (1+ arg))
@@ -187,8 +187,26 @@
   (loopus:for (i 0 10) (print (mm i)))
   (loopus:for (i 0 10)
     (print i)
-    (print 2)))
+(print 2)
+(loopus:for (i 0 2)
+(loopus:for (j 0 2)
+(print (+ 1 2 3 4 5))
+(row-major-aref 2d (+ (* i 2) j))))))
+
+|#
 
 
+(defun print3 (a b)
+  (setf a b))
 
-
+(progn
+  (defun mm (arg) (1+ arg))
+  (let ((2d (make-array '(10 10))))
+    (loopus:for (i 0 10)
+      (loopus:for (j 0 10)
+        (setf (row-major-aref 2d (+ (* j 10) i)) (+ j (* 10 i)))))
+    ;; (loop for i below 10 do (loop for j below 10 do (setf (aref 2d i j) (+ i (* 10 j)))))
+    (loop for i below 10 do
+      (loop for j below 10 do
+        (print (aref 2d j i))))
+    (print "--")))
