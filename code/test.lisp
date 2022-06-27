@@ -171,7 +171,19 @@
 ;; Test of expressions that aren't a read/write
 (progn
   (defun mm (arg) (1+ arg))
-  (loopus:for (i 0 10) (print i))
+  (let ((2d (make-array '(2 2))))
+    (loop for i below 2 do (loop for j below 2 do (setf (aref 2d i j) (+ i (* 10 j)))))
+    (loop for i below 2 do
+      (loop for j below 2 do
+        (print (aref 2d j i))))
+    (print "--")
+    (loopus:for (i 0 2)
+      (loopus:for (j 0 2)
+        (aref 2d j i)))
+    (loopus:for (i 0 2)
+      (loopus:for (j 0 2)
+        (aref 2d j i)
+        (aref 2d j i))))
   (loopus:for (i 0 10) (print (mm i)))
   (loopus:for (i 0 10)
     (print i)

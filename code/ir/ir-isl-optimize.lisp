@@ -91,7 +91,9 @@
            (*global-counter* 0)
            (*id-to-expression* (make-hash-table))
            (*depth-node* (make-hash-table))
-           (*current-depth* 0))
+           (*current-depth* 0)
+           (*node-to-read* (make-hash-table))
+           (*node-to-write* (make-hash-table)))
       ;; End of setf special parameters
       ;; First phase
       (map-block-inner-nodes #'update-node ir)

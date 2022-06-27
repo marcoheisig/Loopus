@@ -316,53 +316,77 @@
 (defmethod update-node ((node ir-node)))
 
 (defmacro my-incf (v)
-  `(setf ,v ;;(1+ ,v)))
+  `(setf ,v
+         ;;(1+ ,v)))
          (* (+ 1 ,v) 2)))
+;; todo when it packs loop, instead of 0, c, 0, c, 0 it does 0, c, 0, c, c
+
 (defvar *id-to-expression*) ; int -> loopus node
 (defvar *depth-node*) ; loopus for node -> depth
 (defvar *current-depth*)
 
+;; If a subexpression read/write, then the top expression read/write too
+;; So (1+ (aref ...)) have the same read as (aref ...)
+(defvar *node-to-read*)
+(defvar *node-to-write*)
 
 ;; Function call
 ;; Right now, only check if it's aref/setf, otherwise it does nothing
 (defmethod update-node ((node ir-call))
   (let* ((function-call node)
          (args (ir-node-inputs node))
-         (is-aref (eql 'aref (typo:fnrecord-name (ir-call-fnrecord node))))
-         (is-setf (equal '(setf aref) (typo:fnrecord-name (ir-call-fnrecord node))))
+         ;; for now can-read/write is only aref/setf
+         (can-read (eql 'aref (typo:fnrecord-name (ir-call-fnrecord node))))
+         (can-write (equal '(setf aref) (typo:fnrecord-name (ir-call-fnrecord node))))
          (current-timestamp (create-new-point-domain)))
+    ;;(ins *node-to-read*)
+    ;;(ins node)
     ;; Current timestamp is the set of timestamp corresponding to this single instruction
     ;; If it's a instructon outisde a loop, the set will only have a single element
     ;; Otherwise if it's in a "i" loop, it'd be for instance { [0, i]: start <= i < end }
     ;; For each point of this set, a read/write operation is maybe performed
     ;; We want to add to *map-read/write* the map, for instance, { [0, i] -> A[i, 0] } if A[i, 0] is read
     ;; Will become (when (or "map read can be modified" "map write can be modified"))
-    (when t ;;(or is-aref is-setf)
+    (when t ;;(or can-read can-write)
       ;; Add the loopus node to the hashtable
       (setf (gethash *global-counter* *id-to-expression*) node)
       ;; Add to *set-domain*
       (push-set *set-domain* current-timestamp)
       ;; Add to *map-read* and/or *map-write*
       ;;todo refactor
-      (when (or is-aref is-setf) (let* ((what-is-read/wrote-in-order
-               (if is-aref
-                   ;; If it's an aref, just gives what follows aref
-                   ;; (aref a b c d e) -> args will be (a b c d e)
-                   (cons (first args) (reverse (cdr args)))
-                   ;; If it's an setf, it's ((setf aref) value a b c d e)
-                   ;; instead of (aref a b c d e) like above
-                   ;; So (cdr args) is (a b c d e)
-                   (cons (first (cdr args)) (reverse (cddr args)))
-                   ))
-             ;; Old version
-             ;;(map-of-read/write (apply #'create-new-point-range what-is-read/wrote-in-order))
-             ;;(map-of-read/write (isl:basic-map-union-map map-of-read/write))
-             ;;(map-of-read/write (isl:union-map-intersect-domain map-of-read/write current-timestamp))
-             ;; End of old version
-             (map-of-read/write (isl:basic-map-union-map (apply #'create-new-point-range-new what-is-read/wrote-in-order)))
-             (map-of-read/write (isl:union-map-intersect-domain map-of-read/write current-timestamp)))
-        (when is-aref (push-map *map-read* map-of-read/write))
-        (when is-setf (push-map *map-write* map-of-read/write))))
+      (when (or can-read can-write)
+        (let* ((what-is-read/wrote-in-order
+                 (if can-read
+                     ;; If it's an aref, just gives what follows aref
+                     ;; (aref a b c d e) -> args will be (a b c d e)
+                     (cons (first args) (reverse (cdr args)))
+                     ;; If it's an setf, it's ((setf aref) value a b c d e)
+                     ;; instead of (aref a b c d e) like above
+                     ;; So (cdr args) is (a b c d e)
+                     (cons (first (cdr args)) (reverse (cddr args)))
+                     ))
+               ;; Old version
+               ;;(map-of-read/write (apply #'create-new-point-range what-is-read/wrote-in-order))
+               ;;(map-of-read/write (isl:basic-map-union-map map-of-read/write))
+               ;;(map-of-read/write (isl:union-map-intersect-domain map-of-read/write current-timestamp))
+               ;; End of old version
+               (full-map-of-read/write (isl:basic-map-union-map (apply #'create-new-point-range-new what-is-read/wrote-in-order)))
+               (map-of-read/write (isl:union-map-intersect-domain full-map-of-read/write current-timestamp)))
+          (when can-read
+            (setf (gethash node *node-to-read*) full-map-of-read/write)
+            (push-map *map-read* map-of-read/write))
+          (when can-write
+            (setf (gethash node *node-to-write*) full-map-of-read/write)
+            (push-map *map-write* map-of-read/write))))
+      ;; Add read/write subexpression
+      
+      (loop for node in args do
+        (let* ((node (ir-value-producer node))
+               (read (gethash node *node-to-read*))
+               (write (gethash node *node-to-write*)))
+          (when read (push-map *map-read* (isl:union-map-intersect-domain read current-timestamp)))
+          (when write (push-map *map-write* (isl:union-map-intersect-domain write current-timestamp)))))
+      
       ;; Add to *map-schedule*
       (push-map *map-schedule* (create-map-schedule current-timestamp))
       #+or(isl:union-map-intersect-domain
