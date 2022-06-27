@@ -141,8 +141,7 @@
                                   ;;(isl:create-val-affine local-space-domain (isl:value start-value))))
              (affmap (isl:basic-map-from-affine aff))
              (affmap (isl:basic-map-insert-dimension affmap :dim-out 0 p))
-             ;; size domain or current depth?
-             (affmap (isl:basic-map-insert-dimension affmap :dim-out (1+ p) (- (1- *size-domain*) p)))
+             (affmap (isl:basic-map-insert-dimension affmap :dim-out (1+ p) (- (* 2 *current-depth*) p)))
              (_ (setf result (isl:basic-set-intersect result (isl::basic-set-apply result affmap))))
              ;; Creation of start value: start <= i
              (constraint (isl:make-inequality-constraint local-space-domain))
@@ -338,6 +337,20 @@
 ;; Function call
 ;; Right now, only check if it's aref/setf, otherwise it does nothing
 (defmethod update-node ((node ir-call))
+  ;; Structure of the function is the following:
+  ;;
+  ;; The goal is to add timestamp/read/write/schedule to our special parameters
+  ;; Current timestamp is the set of timestamp corresponding to this single instruction
+  ;; Read/write maps that maps timestamp to data in memory. Possible when (or can-read can-write)
+  ;; For timestamp, if it's a instructon outisde a loop, the set will only have a single element
+  ;; Otherwise if it's in a "i" loop, it'd be for instance { [0, i]: start <= i < end }
+  ;; For each point of this set, a read/write operation is maybe performed
+  ;; We want to add to *map-read/write* the map, for instance, { [0, i] -> A[i, 0] } if A[i, 0] is read
+  ;;
+  ;; First, we add to *node-to-read/write* if the loopus node can read/write
+  ;; Then, we propagate this info. If one of your input can read, then you can too!
+  ;; Finally, if a instruction is not used as a subexpression of another one (here variable is-final)
+  ;;          then we log the timestamp and everything it can read/write to our special variables
   (let* ((function-call node)
          (args (ir-node-inputs node))
          (can-read (or
@@ -349,63 +362,49 @@
          (has-side-effect (eql 'print (typo:fnrecord-name (ir-call-fnrecord node))))
          (is-final (not (ir-node-outputs node))) ;; iif no outputs
          (current-timestamp (create-new-point-domain)))
-    (alexandria:ensure-gethash node *node-to-read* (isl:union-map-empty *space-map-domain-range*))
-    (alexandria:ensure-gethash node *node-to-write* (isl:union-map-empty *space-map-domain-range*))
-    ;; Current timestamp is the set of timestamp corresponding to this single instruction
-    ;; If it's a instructon outisde a loop, the set will only have a single element
-    ;; Otherwise if it's in a "i" loop, it'd be for instance { [0, i]: start <= i < end }
-    ;; For each point of this set, a read/write operation is maybe performed
-    ;; We want to add to *map-read/write* the map, for instance, { [0, i] -> A[i, 0] } if A[i, 0] is read
-    ;; Will become (when (or "map read can be modified" "map write can be modified"))
-    (when (or has-side-effect can-read can-write)
-      (when is-final
-        ;; Add the loopus node to the hashtable
-        (setf (gethash *global-counter* *id-to-expression*) node)
-        ;; Add to *set-domain*
-        (push-set *set-domain* current-timestamp))
-      ;; Add to *map-read* and/or *map-write*
-      ;;todo refactor
-      (when (or can-read can-write)
-        (let* ((what-is-read/wrote-in-order
-                 (if can-read
-                     ;; If it's an aref, just gives what follows aref
-                     ;; (aref a b c d e) -> args will be (a b c d e)
-                     (cons (first args) (reverse (cdr args)))
-                     ;; If it's an setf, it's ((setf aref) value a b c d e)
-                     ;; instead of (aref a b c d e) like above
-                     ;; So (cdr args) is (a b c d e)
-                     (cons (first (cdr args)) (reverse (cddr args)))
-                     ))
-               ;; Old version
-               ;;(map-of-read/write (apply #'create-new-point-range what-is-read/wrote-in-order))
-               ;;(map-of-read/write (isl:basic-map-union-map map-of-read/write))
-               ;;(map-of-read/write (isl:union-map-intersect-domain map-of-read/write current-timestamp))
-               ;; End of old version
-               (full-map-of-read/write (isl:basic-map-union-map (apply #'create-new-point-range-new what-is-read/wrote-in-order)))
-               (map-of-read/write (isl:union-map-intersect-domain full-map-of-read/write current-timestamp)))
-          (when can-read
-            (push-map (gethash node *node-to-read*) full-map-of-read/write)
-            (when is-final
-              (push-map *map-read* map-of-read/write)))
-          (when can-write
-            (push-map (gethash node *node-to-write*) full-map-of-read/write)
-            (when is-final
-              (push-map *map-write* map-of-read/write)))))
-      ;; Add read/write subexpression
-      ;; Todo think about what to do with this
-      (when is-final
-        (loop for node in args do
-          (let* ((node (ir-value-producer node))
-                 (read (gethash node *node-to-read*))
-                 (write (gethash node *node-to-write*)))
-            (when read (push-map *map-read* (isl:union-map-intersect-domain read current-timestamp)))
-            (when write (push-map *map-write* (isl:union-map-intersect-domain write current-timestamp)))))
-        ;; Add to *map-schedule*
-        (push-map *map-schedule* (create-map-schedule current-timestamp))
-        #+or(isl:union-map-intersect-domain
-             (create-map-schedule *loop-variables*)
-             current-timestamp)
-        (my-incf *global-counter*)))))
+    ;; It's the first time we encounter node, no value is in the hashtable, so we initialize here
+    (setf (gethash node *node-to-read*) (isl:union-map-empty *space-map-domain-range*))
+    (setf (gethash node *node-to-write*) (isl:union-map-empty *space-map-domain-range*))
+    ;; computation if it read/write. Won't modify special variables, only *node-to-read/write*
+    (when (or can-read can-write)
+      (let* ((what-is-read/wrote-in-order
+               (if can-read
+                   ;; If it's an aref, just gives what follows aref
+                   ;; (aref a b c d e) -> args will be (a b c d e)
+                   (cons (first args) (reverse (cdr args)))
+                   ;; If it's an setf, it's ((setf aref) value a b c d e)
+                   ;; instead of (aref a b c d e) like above
+                   ;; So (cdr args) is (a b c d e)
+                   (cons (first (cdr args)) (reverse (cddr args)))
+                   ;; todo when its setf but row major aref it's not cdr :) :) :)
+                   ;; todo refactor anyway for row major aref
+                   ))
+             (full-map-of-read/write
+               (isl:basic-map-union-map
+                (apply #'create-new-point-range-new what-is-read/wrote-in-order)))
+             (map-of-read/write
+               (isl:union-map-intersect-domain full-map-of-read/write current-timestamp)))
+        (when can-read (push-map (gethash node *node-to-read*) full-map-of-read/write))
+        (when can-write (push-map (gethash node *node-to-write*) full-map-of-read/write))))
+    ;; Propagate read/write information from subexpressions
+    (loop for node in args do
+      (let* ((node (ir-value-producer node))
+             (read (gethash node *node-to-read*))
+             (write (gethash node *node-to-write*)))
+        ;; node may not be an ir-call, so read/write can be nil instead of union-map-empty
+        (when read (push-map (gethash node *node-to-read*) read))
+        (when write (push-map (gethash node *node-to-write*) write))))
+    ;; When the expression is final, add everything to the special variables
+    (when is-final
+      ;; Both following s-expr remember what expressions needs to be included in the final code
+      (setf (gethash *global-counter* *id-to-expression*) node)
+      (push-set *set-domain* current-timestamp)
+      (let ((read (gethash node *node-to-read*))
+            (write (gethash node *node-to-write*)))
+        (push-map *map-read* (isl:union-map-intersect-domain read current-timestamp))
+        (push-map *map-write* (isl:union-map-intersect-domain write current-timestamp)))
+      (push-map *map-schedule* (create-map-schedule current-timestamp))
+      (my-incf *global-counter*))))
 
 ;; todo
 (defun parse-bound (value)
@@ -432,7 +431,7 @@
     (cond
       ((and (eql a variable) (eql f '<)) (parse-bound b))
       ((and (eql a variable) (eql f '<=)) (parse-bound (1+ b)))
-      ;; a > variable --> the end is a
+      ;; "a > variable" --> the end is a
       ((and (eql b variable) (eql f '>)) (parse-bound a))
       ((and (eql b variable) (eql f '>=)) (parse-bound (1+ a)))
       (t (break "We cannot optimize this loop for now")))))
