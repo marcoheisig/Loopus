@@ -316,7 +316,8 @@
 (defmethod update-node ((node ir-node)))
 
 (defmacro my-incf (v)
-  `(setf ,v (1+ ,v))) ;; (* (+ 1 ,v) 2)))
+  `(setf ,v ;;(1+ ,v)))
+         (* (+ 1 ,v) 2)))
 (defvar *id-to-expression*) ; int -> loopus node
 (defvar *depth-node*) ; loopus for node -> depth
 (defvar *current-depth*)

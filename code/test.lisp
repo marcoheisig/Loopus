@@ -168,13 +168,14 @@
 
 
 
-(defparameter *a* 0)
-
-(defun mm (arg) arg)
-
-(loopus:for (i 0 10) (print (mm i)))
-
-(print *a*)
+;; Test of expressions that aren't a read/write
+(progn
+  (defun mm (arg) (1+ arg))
+  (loopus:for (i 0 10) (print i))
+  (loopus:for (i 0 10) (print (mm i)))
+  (loopus:for (i 0 10)
+    (print i)
+    (print 2)))
 
 
 

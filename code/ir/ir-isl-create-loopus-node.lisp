@@ -44,7 +44,7 @@
          (args (loop for i from 0 below how-many-args by 2 collect (isl:op-expr-get-op-arg node i)))
          (counter-value (isl:value-object
                          (isl:int-expr-get-value
-                          (isl:op-expr-get-op-arg node 1))))
+                          (isl:op-expr-get-op-arg node (1- how-many-args)))))
          (old-node (gethash counter-value *id-to-expression*))
          (old-code (ir-node-inputs old-node))
          (idx (mapcar (lambda (c)
@@ -58,15 +58,14 @@
                                     (loop for e in idx collect (nth e (reverse *depth-loop-variables*))))))
                           (r (loop for e in old-code collect (copy-ir-node 'output e)))
                           (_ (setf *depth-loop-variables* cp)))
-                     r))
-         (old-code-2 (ir-node-outputs old-node))
-         (abc (copy-ir-value nil (first old-code-2)))
-         (_ (ins abc))
-         )
+                     r)))
     (make-instance 'ir-call
                   :fnrecord (ir-call-fnrecord old-node)
                   :inputs old-code
-                  :outputs (list abc)
+                  :outputs nil
+                  ;; Nil because we split each expression into subexpressions ?
+                  ;; doen't work with multiple return value ?
+                  ;; todo
                   )))
 
 ;; A block is a sequence of instructions
