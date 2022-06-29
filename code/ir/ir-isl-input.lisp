@@ -365,17 +365,17 @@
          ;; For now we keep expression that have no outputs (to catch for instance 'print)
          ;; Todo catch everything flushable or something else
          ;; The generated ast in the end will have only expression that have side effects
-         (has-side-effect (not (ir-node-outputs node)))
-         (we-keep-it has-side-effect)
+         (has-side-effect (eql 'print (typo:fnrecord-name (ir-call-fnrecord node))))
+         (we-keep-it (not (ir-node-outputs node)))
          (current-timestamp (create-new-point-domain)))
     ;; It's the first time we encounter node, no value is in the hashtable, so we initialize here
     (setf (gethash node *node-to-read*) (isl:union-map-empty *space-map-domain-range*))
     (setf (gethash node *node-to-write*) (isl:union-map-empty *space-map-domain-range*))
     ;; Computation if it read/write. Won't modify special variables, only *node-to-read/write*
     (when (or can-read can-write)
-      ;; Either (row-major-aref array idx), or (setf-row-major-aref array value idx)
+      ;; Either (row-major-aref array idx), or (setf-row-major-aref array idx value)
       ;; Todo, the setf thing is implementation dependant too I guess
-      (let* ((what-is-read/wrote-in-order (if can-read args (cons (first args) (last args))))
+      (let* ((what-is-read/wrote-in-order (if can-read args (butlast args)))
              (full-map-of-read/write
                (isl:basic-map-union-map
                 (apply #'create-new-point-range-new what-is-read/wrote-in-order)))

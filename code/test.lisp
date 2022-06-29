@@ -52,7 +52,7 @@
 
     ;; Sum over arrays
     ;; 1D
-   (progn
+   #+or(progn
       (print "1d")
       (print 1d)
       (loopus:for (i 2 v-end) ;; doesn't work anymore with v-start because of step
@@ -87,8 +87,9 @@
       ;; todo
       ;; if step is not known, the loop direction is unknown, and not sure what I should do
       ;; but the user probably know the loop direction anyway, maybe better to ask him
-      (loopus:for (i 2 9)
-        (loopus:for (j 1 i 2)
+      (loopus:for (i 0 10)
+        (loopus:for (j 0 10)
+          ;;(format t "~a ~%" (+ (* 10 i) j))
           (setf (row-major-aref 2d (+ (* 10 i) j)) (+ i j)))
         #+or(loopus:for (j 1 i)
           (setf (aref 2dfefef i j) (+ i j))))
@@ -232,6 +233,7 @@
 
 
 
+;; todo fix where we read/write in memory in map read
 
 
 
