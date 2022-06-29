@@ -3,6 +3,8 @@
 ;; Some function to compute properties about the loop, and then isl-optimize
 
 ;; Max dimension of array access on read/write access (print array) doesn't count
+;; We don't use it anymore because everything is row-major-aref, so the max dimension we want is 1
+;; To keep in case we switch back to supporting aref
 (defgeneric compute-max-array-dimension (ir))
 (defmethod compute-max-array-dimension ((ir ir-loop))
   (compute-max-array-dimension (ir-loop-body ir)))
@@ -41,8 +43,15 @@
      (lambda (ir) (setf value (+ value (compute-max-free-variable ir))))
      ir)
     value))
+;; For now, we create a free variable unless it's a integer or a function
+;; Todo either better counting, or creating them on the fly
 (defmethod compute-max-free-variable ((ir ir-construct))
-  1) ; todo be 1 iif it may be free variable, 0 otherwise
+  (let* ((ntype (ir-value-derived-ntype (first (ir-node-outputs ir)))))
+    (if (and (typo:eql-ntype-p ntype)
+             (or
+              (integerp (typo:eql-ntype-object ntype))
+              (functionp (typo:eql-ntype-object ntype))))
+        0 1)))
 (defmethod compute-max-free-variable ((ir ir-node)) 0)
 
 
@@ -66,7 +75,7 @@
          ;; Add parameters from free variables
          (*free-variable-to-index* (make-hash-table :test 'equal)))
     (loop for i below *size-free-parameters* do
-      (let ((id (isl:make-gensym-identifier 'free-variable)))
+      (let ((id (isl:make-gensym-identifier 'fv)))
         (setf (gethash (symbol-name (isl:identifier-name id)) *free-variable-to-index*) i)
         (setf *space-domain* (isl:space-add-param-id *space-domain* id))
         (setf *space-range* (isl:space-add-param-id *space-range* id))
@@ -93,7 +102,8 @@
            (*depth-node* (make-hash-table))
            (*current-depth* 0)
            (*node-to-read* (make-hash-table))
-           (*node-to-write* (make-hash-table)))
+           (*node-to-write* (make-hash-table))
+           (*set-of-side-effect* (isl:union-set-from-str "{ [0] }")))
       ;; End of setf special parameters
       ;; First phase
       (map-block-inner-nodes #'update-node ir)

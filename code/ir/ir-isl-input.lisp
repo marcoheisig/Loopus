@@ -233,6 +233,8 @@
          (constraint (isl:equality-constraint-set-coefficient constraint :dim-out 0 (isl:value -1)))
          (result (isl:basic-map-add-constraint result constraint)))
     ;; The, we do all arguments of the read. So if (aref a b c 1 3) we do for a b c 1 3
+    ;; This loop is now useless that we have row-major-aref only. We keep it if we want to go back to aref
+    ;; Comments below are written for the aref code
     (loop for idx from 1 below (length args) do
       ;; For everything we read, we create an affixe expression of what it is, and create the associated map
       (let* ((affine-expression (affine-expression-from-loopus-ast (nth idx args) local-space-domain))
@@ -254,7 +256,8 @@
         ;; Now we have the good map
         (setf result (isl:basic-map-intersect result new-map))))
     ;; Fill for the rest with a single value
-    (loop for p from (length args) below *size-range* do
+    ;; Same, useless. Keep it just in case
+    #+or(loop for p from (length args) below *size-range* do
       (let* ((constraint (isl:make-equality-constraint local-space))
              (constraint (isl:equality-constraint-set-constant constraint (isl:value -1)))
              (constraint (isl:equality-constraint-set-coefficient constraint :dim-out p (isl:value -1))))
@@ -334,6 +337,9 @@
 (defvar *node-to-read*)
 (defvar *node-to-write*)
 
+;; Where we write in the range to represent that we have side effect
+(defvar *set-of-side-effect*)
+
 ;; Function call
 ;; Right now, only check if it's aref/setf, otherwise it does nothing
 (defmethod update-node ((node ir-call))
@@ -349,36 +355,27 @@
   ;;
   ;; First, we add to *node-to-read/write* if the loopus node can read/write
   ;; Then, we propagate this info. If one of your input can read, then you can too!
-  ;; Finally, if a instruction is not used as a subexpression of another one (here variable is-final)
+  ;; Finally, if a instruction will be in the generated ast (variable we-keep-it)
   ;;          then we log the timestamp and everything it can read/write to our special variables
   (let* ((function-call node)
          (args (ir-node-inputs node))
-         (can-read (or
-                    (eql 'row-major-aref (typo:fnrecord-name (ir-call-fnrecord node)))
-                    (eql 'aref (typo:fnrecord-name (ir-call-fnrecord node)))))
-         (can-write (or
-                     (equal '(setf aref) (typo:fnrecord-name (ir-call-fnrecord node)))
-                     (eql 'sb-kernel:%set-row-major-aref (typo:fnrecord-name (ir-call-fnrecord node)))))
-         (has-side-effect (eql 'print (typo:fnrecord-name (ir-call-fnrecord node))))
-         (is-final (not (ir-node-outputs node))) ;; iif no outputs
+         ;; We only support row-major-aref here. Todo patch that it's implementation depend
+         (can-read (eql 'row-major-aref (typo:fnrecord-name (ir-call-fnrecord node))))
+         (can-write (eql 'sb-kernel:%set-row-major-aref (typo:fnrecord-name (ir-call-fnrecord node))))
+         ;; For now we keep expression that have no outputs (to catch for instance 'print)
+         ;; Todo catch everything flushable or something else
+         ;; The generated ast in the end will have only expression that have side effects
+         (has-side-effect (not (ir-node-outputs node)))
+         (we-keep-it has-side-effect)
          (current-timestamp (create-new-point-domain)))
     ;; It's the first time we encounter node, no value is in the hashtable, so we initialize here
     (setf (gethash node *node-to-read*) (isl:union-map-empty *space-map-domain-range*))
     (setf (gethash node *node-to-write*) (isl:union-map-empty *space-map-domain-range*))
-    ;; computation if it read/write. Won't modify special variables, only *node-to-read/write*
+    ;; Computation if it read/write. Won't modify special variables, only *node-to-read/write*
     (when (or can-read can-write)
-      (let* ((what-is-read/wrote-in-order
-               (if can-read
-                   ;; If it's an aref, just gives what follows aref
-                   ;; (aref a b c d e) -> args will be (a b c d e)
-                   (cons (first args) (reverse (cdr args)))
-                   ;; If it's an setf, it's ((setf aref) value a b c d e)
-                   ;; instead of (aref a b c d e) like above
-                   ;; So (cdr args) is (a b c d e)
-                   (cons (first (cdr args)) (reverse (cddr args)))
-                   ;; todo when its setf but row major aref it's not cdr :) :) :)
-                   ;; todo refactor anyway for row major aref
-                   ))
+      ;; Either (row-major-aref array idx), or (setf-row-major-aref array value idx)
+      ;; Todo, the setf thing is implementation dependant too I guess
+      (let* ((what-is-read/wrote-in-order (if can-read args (cons (first args) (last args))))
              (full-map-of-read/write
                (isl:basic-map-union-map
                 (apply #'create-new-point-range-new what-is-read/wrote-in-order)))
@@ -394,8 +391,12 @@
         ;; node may not be an ir-call, so read/write can be nil instead of union-map-empty
         (when read (push-map (gethash node *node-to-read*) read))
         (when write (push-map (gethash node *node-to-write*) write))))
-    ;; When the expression is final, add everything to the special variables
-    (when is-final
+    ;; If it has side effect, we represent that by writting to a special point in the range
+    (when has-side-effect
+      (push-map (gethash node *node-to-write*)
+                (isl:union-map-from-domain-and-range current-timestamp *set-of-side-effect*)))
+    ;; When we keep the expression, add everything to the special variables
+    (when we-keep-it
       ;; Both following s-expr remember what expressions needs to be included in the final code
       (setf (gethash *global-counter* *id-to-expression*) node)
       (push-set *set-domain* current-timestamp)
@@ -406,14 +407,13 @@
       (push-map *map-schedule* (create-map-schedule current-timestamp))
       (my-incf *global-counter*))))
 
-;; todo
 (defun parse-bound (value)
-  (if (typo.ntype:eql-ntype-p (ir-value-derived-ntype value))
-      ;(typo:eql-ntype-object
-      (second (ir-value-derived-type value))
-      value)) ;;todo
-;;      (ir-construct-form (ir-value-producer value))))
+  (let ((ntype (ir-value-derived-ntype value)))
+    (if (typo.ntype:eql-ntype-p ntype)
+        (typo:eql-ntype-object ntype)
+        value)))
 
+;; todo turn this into a cl isl
 (defun parse-end-bound (value variable)
   ;; We only do something (now) when the loop is know
   ;; otherwise todo loop end is a free variable

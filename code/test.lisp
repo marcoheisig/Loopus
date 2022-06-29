@@ -1,7 +1,7 @@
 (in-package :loopus.ir)
 
 (declaim (optimize (debug 3)))
-#|
+
 (macrolet ((acc (v) `(setf (aref accumulator 0) (+ (aref accumulator 0) ,v))))
   (let* ((dim 10)
          (v-start 2)
@@ -37,7 +37,7 @@
     ;; todo
 
     ;; Index which are an operation
-    (progn
+    #+or(progn
       (print "1d")
       (print 1d)
       (loopus:for (i 0 9)
@@ -56,9 +56,13 @@
       (print "1d")
       (print 1d)
       (loopus:for (i 2 v-end) ;; doesn't work anymore with v-start because of step
-        (setf (aref 1d i) 2))
+        (setf (row-major-aref 1d i) 2))
       (print 1d)
 
+      ;; Doesn't get reordered. Nice
+      (loopus:for (i 0 2)
+        (loopus:for (j 0 2)
+          (print (+ (* 10 j) i))))
 
       ;;(setf (aref accumulator 0) 1)
       #+or(loopus:for (i 0 10)
@@ -85,7 +89,7 @@
       ;; but the user probably know the loop direction anyway, maybe better to ask him
       (loopus:for (i 2 9)
         (loopus:for (j 1 i 2)
-          (setf (aref 2d j i) (+ i j)))
+          (setf (row-major-aref 2d (+ (* 10 i) j)) (+ i j)))
         #+or(loopus:for (j 1 i)
           (setf (aref 2dfefef i j) (+ i j))))
        #+or(loopus:for (i 2 9)
@@ -166,7 +170,6 @@
     ;; End
     ))
 
-|#
 #|
 ;; Test of expressions that aren't a read/write
 (progn
@@ -199,27 +202,53 @@
 (defun print3 (a b)
   (setf a b))
 
-(progn
+#+or(progn
   (defun mm (arg) (1+ arg))
   (let ((2d (make-array '(10 10)))
         (ss 1))
-    #+or(loop for i from ss below 10 do
+    #+or(loop for i from 0 below 10 do
       (loop for j from 0 below 10 do
-        (setf (row-major-aref 2d (+ (* j 10) i)) (+ j (* 10 i)))))
-   (loopus:for (i ss 10)
+        (setf (row-major-aref 2d (+ (* j 10) i))
+              (+ j (* 10 i)))))
+   (loopus:for (i 0 10)
       (loopus:for (j 0 10)
-        (setf (row-major-aref 2d (+ (* j 10) i)) (+ j (* 10 i)))))
+        (setf (row-major-aref 2d (+ (* j 10) i))
+              (+ j (* 10 i)))))
     ;; (loop for i below 10 do (loop for j below 10 do (setf (aref 2d i j) (+ i (* 10 j)))))
     (loop for i from 0 below 10 do
-      (loop for j from 1 below 10 do
+      (loop for j from 0 below 10 do
         (print (aref 2d j i))))
     (print "--")))
 
 
 #+or(let ((start 2)
       (end 10)
-      (step 2))
+      (step 2)
+      (2d (make-array '(10 10))))
+  (declare (array 2d))
   (loopus:for (i start end)
     (loopus:for (j 0 i)
-      (print j)
-      (print i))))
+      (print (row-major-aref 2d (+ (* 10 i) j))))))
+
+
+
+
+
+
+
+
+;; memory locality
+;; (?) step not integerp
+;; todo turn this into a cl isl
+;; export every list object of cl isl by hand
+;; fix the or/and by creating a if in loopus ast
+;; create a cl isl ast when i give it to cl isl
+
+
+
+
+
+
+
+
+
