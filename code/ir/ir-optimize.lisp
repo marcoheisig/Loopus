@@ -17,5 +17,5 @@
 (defun ir-optimize (ir)
 ;  (ir-vectorize
   (ir-isl-optimize
-   ;;(ir-remove-dead-code
+;;    (ir-remove-dead-code
      (ir-specialize ir)))

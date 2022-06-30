@@ -63,6 +63,11 @@
       '*
        (loop repeat expected-values collect (make-instance 'ir-value))))
 
+(defun output-values-list (outputs)
+  (if (eql outputs '*)
+      (values)
+      (values-list outputs)))
+
 (defun ir-convert (form lexenv &optional (expected-values 1))
   (ensure-expected-values expected-values
     (if (atom form)
@@ -188,7 +193,7 @@
       :fnrecord (typo:ensure-fnrecord 'funcall)
       :inputs (mapcar (lambda (form) (ir-convert form lexenv)) rest)
       :outputs outputs)
-    (values-list outputs)))
+    (output-values-list outputs)))
 
 (defmethod ir-convert-compound-form
     ((_ (eql 'macrolet)) rest lexenv expected-values)
@@ -342,7 +347,7 @@
       (when restp
         (loop while values do
           (ir-value-declare-type (pop rest) rest)))
-      (values-list values))))
+      (output-values-list values))))
 
 (defun parse-values-type-specifier (type-specifier)
   (trivia:match type-specifier
@@ -411,7 +416,7 @@
         :outputs outputs
         :then then-node
         :else else-node)
-      (values-list outputs))))
+      (output-values-list outputs))))
 
 (defmethod ir-convert-compound-form
     ((_ (eql '%for)) rest lexenv expected-values)
@@ -435,7 +440,7 @@
         (ir-convert `(if (minusp ,step-sym)
                          (> ,variable-name ,end-sym)
                          (< ,variable-name ,end-sym))
-                    lexenv))
+                    lexenv '*))
       (let ((lexenv (augment-lexenv lexenv (list (make-vrecord variable-name variable)) '()))
             (*blocks* (cons (ir-final-node body) *blocks*)))
         (ir-convert body-form lexenv 0))

@@ -47,7 +47,8 @@
 
 (defmethod ir-node-alive-p ((ir-loop ir-loop))
   ;; A loop is a live if its body is alive.
-  (ir-node-alive-p (ir-loop-body ir-loop)))
+  (or (ir-node-alive-p (ir-loop-test ir-loop))
+      (ir-node-alive-p (ir-loop-body ir-loop))))
 
 (defmethod ir-node-alive-p ((ir-call ir-call))
   ;; A call is alive it is not pure.

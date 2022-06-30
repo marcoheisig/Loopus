@@ -72,7 +72,7 @@
 
     ;; 2D
     ;; aref not taking into accoutn?
-    (progn
+    #+or(progn
       (print "2d")
       (loop for i below 10 do
         (loop for j below 10 do
@@ -254,3 +254,4 @@
 
 
 
+(loopus:for (i 0 5) (print i))

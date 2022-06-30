@@ -44,7 +44,7 @@
                  ir-value))
              (wrapper-outputs (wrapper expected-values)
                (if (eql expected-values '*)
-                   '()
+                   '*
                    (let ((outputs
                            (etypecase wrapper
                              (ir-value (list wrapper))
@@ -115,3 +115,11 @@
                    (if (null else-outputs)
                        (typo:universal-ntype)
                        (ir-value-derived-ntype (pop else-outputs))))))))))
+
+(defmethod copy-ir-node
+    ((context (eql 'ir-specialize))
+     (ir-loop ir-loop))
+  (let* ((loop (call-next-method))
+         (test (ir-loop-test loop))
+         (last-node (ir-node-predecessor (ir-final-node test))))
+    (setf (slot-value last-node '%outputs) '*)))
